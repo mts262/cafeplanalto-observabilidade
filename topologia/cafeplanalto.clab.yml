@@ -29,8 +29,8 @@ topology:
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
 
-    - endpoints: ["r-matriz:eth2", "br-servicos:eth1"]
+    - endpoints: ["r-matriz:eth2", "br-servicos:svc1"]
 
-    - endpoints: ["r-matriz:eth3", "br-gestao:eth1"]
+    - endpoints: ["r-matriz:eth3", "br-gestao:gest1"]
 
-    - endpoints: ["r-filial:eth2", "br-filial:eth1"]
+    - endpoints: ["r-filial:eth2", "br-filial:fil1"]
