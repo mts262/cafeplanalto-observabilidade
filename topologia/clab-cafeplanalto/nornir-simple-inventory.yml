@@ -1,0 +1,11 @@
+---
+r-filial:
+    username: admin
+    password: admin
+    platform: frr
+    hostname: 172.20.20.2
+r-matriz:
+    username: admin
+    password: admin
+    platform: frr
+    hostname: 172.20.20.3

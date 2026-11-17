@@ -1,0 +1,116 @@
+{
+  "name": "cafeplanalto",
+  "type": "clab",
+  "clab": {
+    "config": {
+      "prefix": "clab",
+      "mgmt": {
+        "network": "clab",
+        "bridge": "br-0f80edf1cc7a",
+        "ipv4-subnet": "172.20.20.0/24",
+        "ipv4-gw": "172.20.20.1",
+        "ipv6-subnet": "3fff:172:20:20::/64",
+        "ipv6-gw": "3fff:172:20:20::1",
+        "external-access": true,
+        "ipam": {
+          "provider": "containerlab"
+        }
+      }
+    }
+  },
+  "ssh-pub-keys": [],
+  "nodes": {
+    "r-filial": {
+      "index": "0",
+      "shortname": "r-filial",
+      "longname": "clab-cafeplanalto-r-filial",
+      "fqdn": "r-filial.cafeplanalto.io",
+      "group": "",
+      "labdir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-filial",
+      "kind": "frr",
+      "image": "quay.io/frrouting/frr:containerlab-10.7.1",
+      "mgmt-net": "clab",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.20.2",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "3fff:172:20:20::2",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-0f80edf1cc7a",
+        "clab-node-group": "",
+        "clab-node-kind": "frr",
+        "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-filial",
+        "clab-node-longname": "clab-cafeplanalto-r-filial",
+        "clab-node-name": "r-filial",
+        "clab-node-type": "",
+        "clab-owner": "vini",
+        "clab-topo-file": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/cafeplanalto.clab.yml",
+        "containerlab": "cafeplanalto"
+      },
+      "port-bindings": [
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 22,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "r-matriz": {
+      "index": "1",
+      "shortname": "r-matriz",
+      "longname": "clab-cafeplanalto-r-matriz",
+      "fqdn": "r-matriz.cafeplanalto.io",
+      "group": "",
+      "labdir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-matriz",
+      "kind": "frr",
+      "image": "quay.io/frrouting/frr:containerlab-10.7.1",
+      "mgmt-net": "clab",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.20.3",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "3fff:172:20:20::3",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-0f80edf1cc7a",
+        "clab-node-group": "",
+        "clab-node-kind": "frr",
+        "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-matriz",
+        "clab-node-longname": "clab-cafeplanalto-r-matriz",
+        "clab-node-name": "r-matriz",
+        "clab-node-type": "",
+        "clab-owner": "vini",
+        "clab-topo-file": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/cafeplanalto.clab.yml",
+        "containerlab": "cafeplanalto"
+      },
+      "port-bindings": [
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 22,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "links": [
+    {
+      "endpoints": {
+        "a": {
+          "node": "r-matriz",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:67:12:75",
+          "peer": "z"
+        },
+        "z": {
+          "node": "r-filial",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:3e:03:b4",
+          "peer": "a"
+        }
+      }
+    }
+  ]
+}
