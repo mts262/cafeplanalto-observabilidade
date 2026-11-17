@@ -1,0 +1,21 @@
+
+name: cafeplanalto
+
+topology:
+  nodes:
+    r-matriz:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r-matriz/frr.conf
+      daemons:
+        - staticd
+
+    r-filial:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r-filial/frr.conf
+      daemons:
+        - staticd
+
+  links:
+    - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
