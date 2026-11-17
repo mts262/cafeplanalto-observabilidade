@@ -4,20 +4,22 @@ name: cafeplanalto
 mgmt:
   network: clab
   ipv4-subnet: 172.20.255.0/24
-  
+
 topology:
   nodes:
     r-matriz:
       kind: frr
       image: quay.io/frrouting/frr:containerlab-10.7.1
-      startup-config: configs/r-matriz/frr.conf
+      startup-config: topologia/configs/r-matriz/frr.conf
+      enforce-startup-config: true
       daemons:
         - staticd
 
     r-filial:
       kind: frr
       image: quay.io/frrouting/frr:containerlab-10.7.1
-      startup-config: configs/r-filial/frr.conf
+      startup-config: topologia/configs/r-filial/frr.conf
+      enforce-startup-config: true
       daemons:
         - staticd
 
@@ -32,9 +34,6 @@ topology:
 
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
-
     - endpoints: ["r-matriz:eth2", "br-servicos:svc1"]
-
     - endpoints: ["r-matriz:eth3", "br-gestao:gest1"]
-
     - endpoints: ["r-filial:eth2", "br-filial:fil1"]
