@@ -1,4 +1,19 @@
 ---
+br-filial:
+    username: 
+    password: 
+    platform: bridge
+    hostname: 
+br-gestao:
+    username: 
+    password: 
+    platform: bridge
+    hostname: 
+br-servicos:
+    username: 
+    password: 
+    platform: bridge
+    hostname: 
 r-filial:
     username: admin
     password: admin
