@@ -6,11 +6,9 @@
       "prefix": "clab",
       "mgmt": {
         "network": "clab",
-        "bridge": "br-66340ec56326",
-        "ipv4-subnet": "172.20.20.0/24",
-        "ipv4-gw": "172.20.20.1",
-        "ipv6-subnet": "3fff:172:20:20::/64",
-        "ipv6-gw": "3fff:172:20:20::1",
+        "bridge": "br-10c9915cea04",
+        "ipv4-subnet": "172.20.255.0/24",
+        "ipv4-gw": "172.20.255.1",
         "external-access": true,
         "ipam": {
           "provider": "containerlab"
@@ -37,7 +35,7 @@
       "mgmt-ipv6-prefix-length": 0,
       "mac-address": "",
       "labels": {
-        "clab-mgmt-net-bridge": "br-66340ec56326",
+        "clab-mgmt-net-bridge": "br-10c9915cea04",
         "clab-node-group": "",
         "clab-node-kind": "bridge",
         "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/br-filial",
@@ -68,7 +66,7 @@
       "mgmt-ipv6-prefix-length": 0,
       "mac-address": "",
       "labels": {
-        "clab-mgmt-net-bridge": "br-66340ec56326",
+        "clab-mgmt-net-bridge": "br-10c9915cea04",
         "clab-node-group": "",
         "clab-node-kind": "bridge",
         "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/br-gestao",
@@ -99,7 +97,7 @@
       "mgmt-ipv6-prefix-length": 0,
       "mac-address": "",
       "labels": {
-        "clab-mgmt-net-bridge": "br-66340ec56326",
+        "clab-mgmt-net-bridge": "br-10c9915cea04",
         "clab-node-group": "",
         "clab-node-kind": "bridge",
         "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/br-servicos",
@@ -124,13 +122,13 @@
       "image": "quay.io/frrouting/frr:containerlab-10.7.1",
       "mgmt-net": "clab",
       "mgmt-intf": "",
-      "mgmt-ipv4-address": "172.20.20.2",
+      "mgmt-ipv4-address": "172.20.255.2",
       "mgmt-ipv4-prefix-length": 24,
-      "mgmt-ipv6-address": "3fff:172:20:20::2",
-      "mgmt-ipv6-prefix-length": 64,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
       "mac-address": "",
       "labels": {
-        "clab-mgmt-net-bridge": "br-66340ec56326",
+        "clab-mgmt-net-bridge": "br-10c9915cea04",
         "clab-node-group": "",
         "clab-node-kind": "frr",
         "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-filial",
@@ -161,13 +159,13 @@
       "image": "quay.io/frrouting/frr:containerlab-10.7.1",
       "mgmt-net": "clab",
       "mgmt-intf": "",
-      "mgmt-ipv4-address": "172.20.20.3",
+      "mgmt-ipv4-address": "172.20.255.3",
       "mgmt-ipv4-prefix-length": 24,
-      "mgmt-ipv6-address": "3fff:172:20:20::3",
-      "mgmt-ipv6-prefix-length": 64,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
       "mac-address": "",
       "labels": {
-        "clab-mgmt-net-bridge": "br-66340ec56326",
+        "clab-mgmt-net-bridge": "br-10c9915cea04",
         "clab-node-group": "",
         "clab-node-kind": "frr",
         "clab-node-lab-dir": "/home/vini/Área de trabalho/TI/Faculdade/Adm de Redes/CaféPlanalto/cafeplanalto-observabilidade/topologia/clab-cafeplanalto/r-matriz",
@@ -194,13 +192,13 @@
         "a": {
           "node": "r-matriz",
           "interface": "eth1",
-          "mac": "aa:c1:ab:26:74:c2",
+          "mac": "aa:c1:ab:15:23:52",
           "peer": "z"
         },
         "z": {
           "node": "r-filial",
           "interface": "eth1",
-          "mac": "aa:c1:ab:48:ec:6d",
+          "mac": "aa:c1:ab:5f:b5:23",
           "peer": "a"
         }
       }
@@ -210,13 +208,13 @@
         "a": {
           "node": "r-matriz",
           "interface": "eth2",
-          "mac": "aa:c1:ab:82:07:ba",
+          "mac": "aa:c1:ab:a6:9b:28",
           "peer": "z"
         },
         "z": {
           "node": "br-servicos",
           "interface": "svc1",
-          "mac": "aa:c1:ab:54:e9:29",
+          "mac": "aa:c1:ab:19:c3:93",
           "peer": "a"
         }
       }
@@ -226,13 +224,13 @@
         "a": {
           "node": "r-matriz",
           "interface": "eth3",
-          "mac": "aa:c1:ab:cb:72:b8",
+          "mac": "aa:c1:ab:8f:95:16",
           "peer": "z"
         },
         "z": {
           "node": "br-gestao",
           "interface": "gest1",
-          "mac": "aa:c1:ab:fc:f7:3d",
+          "mac": "aa:c1:ab:83:96:aa",
           "peer": "a"
         }
       }
@@ -242,13 +240,13 @@
         "a": {
           "node": "r-filial",
           "interface": "eth2",
-          "mac": "aa:c1:ab:77:bf:21",
+          "mac": "aa:c1:ab:6b:b0:a4",
           "peer": "z"
         },
         "z": {
           "node": "br-filial",
           "interface": "fil1",
-          "mac": "aa:c1:ab:25:7d:1c",
+          "mac": "aa:c1:ab:39:80:38",
           "peer": "a"
         }
       }
