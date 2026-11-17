@@ -1,4 +1,3 @@
-
 name: cafeplanalto
 
 topology:
@@ -17,5 +16,20 @@ topology:
       daemons:
         - staticd
 
+    sw-matriz-servicos:
+      kind: bridge
+
+    sw-matriz-gestao:
+      kind: bridge
+
+    sw-filial:
+      kind: bridge
+
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
+
+    - endpoints: ["r-matriz:eth2", "sw-matriz-servicos:eth1"]
+
+    - endpoints: ["r-matriz:eth3", "sw-matriz-gestao:eth1"]
+
+    - endpoints: ["r-filial:eth2", "sw-filial:eth1"]
