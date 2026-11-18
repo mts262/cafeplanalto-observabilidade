@@ -42,6 +42,20 @@ topology:
         - ip route add 172.20.0.0/16 via 172.20.10.1
         - ip route add 10.0.0.0/30 via 172.20.10.1
 
+    db:
+      kind: linux
+      image: postgres:16-alpine
+      env:
+        POSTGRES_USER: loja
+        POSTGRES_PASSWORD: loja123
+        POSTGRES_DB: loja
+      binds:
+        - ../app/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      exec:
+        - ip addr add 172.20.10.22/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.10.1
+        - ip route add 10.0.0.0/30 via 172.20.10.1
+
     cliente-carga:
       kind: linux
       image: alpine:3.20
@@ -58,4 +72,5 @@ topology:
     - endpoints: ["r-matriz:eth3", "br-gestao:gest1"]
     - endpoints: ["r-filial:eth2", "br-filial:fil1"]
     - endpoints: ["dns:eth1", "br-servicos:dns1"]
+    - endpoints: ["db:eth1", "br-servicos:db1"]
     - endpoints: ["cliente-carga:eth1", "br-filial:carga1"]
