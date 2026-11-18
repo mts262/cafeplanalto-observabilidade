@@ -56,6 +56,20 @@ topology:
         - ip route add 172.20.0.0/16 via 172.20.10.1
         - ip route add 10.0.0.0/30 via 172.20.10.1
 
+    api:
+      kind: linux
+      image: cafeplanalto/api:latest
+      env:
+        DB_HOST: db.cafeplanalto.lab
+        DB_USER: loja
+        DB_PASSWORD: loja123
+        DB_NAME: loja
+      exec:
+        - ip addr add 172.20.10.21/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.10.1
+        - ip route add 10.0.0.0/30 via 172.20.10.1
+        - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
+
     cliente-carga:
       kind: linux
       image: alpine:3.20
@@ -73,4 +87,5 @@ topology:
     - endpoints: ["r-filial:eth2", "br-filial:fil1"]
     - endpoints: ["dns:eth1", "br-servicos:dns1"]
     - endpoints: ["db:eth1", "br-servicos:db1"]
+    - endpoints: ["api:eth1", "br-servicos:api1"]
     - endpoints: ["cliente-carga:eth1", "br-filial:carga1"]
