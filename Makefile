@@ -6,6 +6,7 @@ BRIDGES := br-servicos br-gestao br-filial
 build:
 	docker build -t cafeplanalto/dns:latest imagens/dns
 	docker build -t cafeplanalto/api:latest -f imagens/api/Dockerfile app/api
+	docker build -t cafeplanalto/carga:latest imagens/carga
 
 up: build
 	@for b in $(BRIDGES); do sudo ip link add $$b type bridge 2>/dev/null || true; sudo ip link set $$b up; done

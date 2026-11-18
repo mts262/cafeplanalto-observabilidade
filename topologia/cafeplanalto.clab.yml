@@ -83,8 +83,11 @@ topology:
 
     cliente-carga:
       kind: linux
-      image: alpine:3.20
-      cmd: sleep infinity
+      image: cafeplanalto/carga:latest
+      binds:
+        - ../carga/loja.js:/carga/loja.js:ro
+        - ../carga/entrypoint.sh:/carga/entrypoint.sh:ro
+      cmd: sh /carga/entrypoint.sh
       exec:
         - ip addr add 172.20.20.20/24 dev eth1
         - ip route add 172.20.0.0/16 via 172.20.20.1
