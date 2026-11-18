@@ -1,9 +1,12 @@
 TOPO    := topologia/cafeplanalto.clab.yml
 BRIDGES := br-servicos br-gestao br-filial
 
-.PHONY: up down redeploy status check
+.PHONY: build up down redeploy status check dns
 
-up:
+build:
+	docker build -t cafeplanalto/dns:latest imagens/dns
+
+up: build
 	@for b in $(BRIDGES); do sudo ip link add $$b type bridge 2>/dev/null || true; sudo ip link set $$b up; done
 	sudo containerlab deploy -t $(TOPO)
 
@@ -18,3 +21,6 @@ status:
 
 check:
 	docker exec clab-cafeplanalto-cliente-carga traceroute 172.20.10.10
+
+dns:
+	docker exec clab-cafeplanalto-cliente-carga nslookup loja.cafeplanalto.lab

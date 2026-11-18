@@ -1,0 +1,34 @@
+$ORIGIN cafeplanalto.lab.
+$TTL 60
+@   IN SOA ns.cafeplanalto.lab. admin.cafeplanalto.lab. (
+        2026111801 ; serial
+        3600       ; refresh
+        600        ; retry
+        86400      ; expire
+        60 )       ; minimum
+    IN NS  ns.cafeplanalto.lab.
+
+; Roteadores (lado WAN)
+r-matriz        IN A 10.0.0.1
+r-filial        IN A 10.0.0.2
+
+; LAN Servicos (172.20.10.0/24)
+ns              IN A 172.20.10.10
+dns             IN A 172.20.10.10
+web             IN A 172.20.10.20
+api             IN A 172.20.10.21
+db              IN A 172.20.10.22
+loja            IN CNAME web
+
+; LAN Gerencia (172.20.99.0/24)
+zabbix-server   IN A 172.20.99.10
+zabbix-web      IN A 172.20.99.11
+zabbix-db       IN A 172.20.99.12
+prometheus      IN A 172.20.99.20
+alertmanager    IN A 172.20.99.21
+grafana         IN A 172.20.99.22
+loki            IN A 172.20.99.23
+
+; LAN Filial (172.20.20.0/24)
+cliente-carga   IN A 172.20.20.20
+sonda           IN A 172.20.20.30
