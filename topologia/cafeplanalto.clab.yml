@@ -1,9 +1,8 @@
-
 name: cafeplanalto
 
 mgmt:
-  network: clab
-  ipv4-subnet: 172.20.255.0/24
+  network: clab-mgmt
+  ipv4-subnet: 172.30.0.0/24
 
 topology:
   nodes:
@@ -32,8 +31,28 @@ topology:
     br-filial:
       kind: bridge
 
+    dns:
+      kind: linux
+      image: alpine:3.20
+      cmd: sleep infinity
+      exec:
+        - ip addr add 172.20.10.10/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.10.1
+        - ip route add 10.0.0.0/30 via 172.20.10.1
+
+    cliente-carga:
+      kind: linux
+      image: alpine:3.20
+      cmd: sleep infinity
+      exec:
+        - ip addr add 172.20.20.20/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.20.1
+        - ip route add 10.0.0.0/30 via 172.20.20.1
+
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
     - endpoints: ["r-matriz:eth2", "br-servicos:svc1"]
     - endpoints: ["r-matriz:eth3", "br-gestao:gest1"]
     - endpoints: ["r-filial:eth2", "br-filial:fil1"]
+    - endpoints: ["dns:eth1", "br-servicos:dns1"]
+    - endpoints: ["cliente-carga:eth1", "br-filial:carga1"]
