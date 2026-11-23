@@ -45,7 +45,7 @@ def api(metodo, params=None):
     if token:
         cab["Authorization"] = "Bearer " + token
     req = urllib.request.Request(URL, json.dumps(corpo).encode(), cab)
-    with urllib.request.urlopen(req, timeout=20) as r:
+    with urllib.request.urlopen(req, timeout=180) as r:
         resp = json.load(r)
     if "error" in resp:
         e = resp["error"]
@@ -94,7 +94,7 @@ def configurar():
             print("  -", nome)
         sys.exit(1)
 
-    for h in HOSTS:
+    def cadastrar(h):
         interface = {"type": 1, "main": 1, "useip": 1,
                      "ip": h["ip"], "dns": "", "port": "10050"}
         macros = [{"macro": k, "value": v} for k, v in h["macros"].items()]
@@ -116,6 +116,17 @@ def configurar():
                 "groups": [{"groupid": gid}],
                 "templates": templates, "macros": macros})
             print("Host criado:", h["host"])
+
+    for h in HOSTS:
+        for tentativa in range(1, 4):
+            try:
+                cadastrar(h)
+                break
+            except OSError as e:
+                print(f"{h['host']}: demorou demais ({e}), tentativa {tentativa}/3")
+                time.sleep(10)
+        else:
+            sys.exit(f"Falha ao cadastrar {h['host']}")
 
     for s in api("host.get", {"output": ["hostid", "status"],
                               "filter": {"host": ["Zabbix server"]}}):
@@ -147,7 +158,7 @@ def status():
             for i in api("item.get", {"hostids": hid,
                                       "filter": {"state": "1"},
                                       "output": ["name", "error"],
-                                      "limit": 3}):
+                                      "limit": 20}):
                 print(f"       - {i['name']}: {i['error'][:90]}")
 
 
