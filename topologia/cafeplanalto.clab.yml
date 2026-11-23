@@ -128,6 +128,42 @@ topology:
         - ip route add 10.0.0.0/30 via 172.20.99.1
         - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
 
+    agent-dns:
+      kind: linux
+      image: zabbix/zabbix-agent2:alpine-8.0-latest
+      network-mode: container:dns
+      env:
+        ZBX_SERVER_HOST: 172.20.99.10
+        ZBX_HOSTNAME: dns
+        ZBX_ACTIVE_ALLOW: "false"
+
+    agent-web:
+      kind: linux
+      image: zabbix/zabbix-agent2:alpine-8.0-latest
+      network-mode: container:web
+      env:
+        ZBX_SERVER_HOST: 172.20.99.10
+        ZBX_HOSTNAME: web
+        ZBX_ACTIVE_ALLOW: "false"
+
+    agent-api:
+      kind: linux
+      image: zabbix/zabbix-agent2:alpine-8.0-latest
+      network-mode: container:api
+      env:
+        ZBX_SERVER_HOST: 172.20.99.10
+        ZBX_HOSTNAME: api
+        ZBX_ACTIVE_ALLOW: "false"
+
+    agent-db:
+      kind: linux
+      image: zabbix/zabbix-agent2:alpine-8.0-latest
+      network-mode: container:db
+      env:
+        ZBX_SERVER_HOST: 172.20.99.10
+        ZBX_HOSTNAME: db
+        ZBX_ACTIVE_ALLOW: "false"
+
     cliente-carga:
       kind: linux
       image: cafeplanalto/carga:latest
