@@ -35,6 +35,7 @@ Rotas estáticas (definidas nos arquivos `topologia/configs/*/frr.conf` e nos `e
 - Linux (Ubuntu/Debian) com 4 GB de RAM livres ou mais, ou Windows 11 com WSL2 e Ubuntu 24.04.
 - Docker Engine, Docker Compose plugin, Containerlab, Git e Make.
 - Acesso à internet na primeira subida (baixa as imagens).
+- `python3` (o Ubuntu já traz; o `make zabbix` usa).
 
 ### Instalação no Ubuntu/Debian
 
@@ -79,7 +80,7 @@ cd cafeplanalto-observabilidade
 make up
 ```
 
-O `make up` constrói as imagens, cria as bridges no host e sobe a topologia. Pede a senha do `sudo`. Aguarde cerca de 30 segundos.
+O `make up` constrói as imagens, cria as bridges no host e sobe a topologia. Pede a senha do `sudo`. Aguarde de 2 a 4 minutos: o final do `make up` espera o Zabbix ficar pronto e cadastra os hosts sozinho.
 
 | Comando | O que faz |
 |---|---|
@@ -89,13 +90,15 @@ O `make up` constrói as imagens, cria as bridges no host e sobe a topologia. Pe
 | `make status` | Lista os contêineres e seus IPs |
 | `make check` | `traceroute` da filial até a LAN Serviços |
 | `make dns` | Resolve `loja.cafeplanalto.lab` a partir da filial |
+| `make zabbix` | Cadastra grupo, hosts e templates no Zabbix pela API (o `make up` já chama) |
+| `make zabbix-status` | Mostra disponibilidade e itens de cada host no Zabbix |
 
 ## Como verificar que funcionou
 
 Todos os testes partem da **filial** (`cliente-carga`), atravessando a WAN:
 
 ```bash
-# 7 contêineres de pé
+# 14 contêineres de pé (7 da loja e da rede, 3 do Zabbix, 4 agentes)
 docker ps --format '{{.Names}}' | wc -l
 
 # Roteamento: deve passar por 172.20.20.1 e 10.0.0.1
@@ -138,6 +141,39 @@ docker exec clab-cafeplanalto-cliente-carga wget -qO- --header='Content-Type: ap
 
 O `/health`, o `/metrics` e o `/admin/caos` não sofrem caos.
 
+## Zabbix (rede e infraestrutura)
+
+Versão **Zabbix 8.0 LTS** (imagens `alpine-8.0-latest`), em três contêineres na LAN Gerência:
+
+| Contêiner | IP | Função |
+|---|---|---|
+| zabbix-server | 172.20.99.10 | Servidor |
+| zabbix-web | 172.20.99.11 | Frontend, publicado em `http://localhost:8080` |
+| zabbix-db | 172.20.99.12 | PostgreSQL do Zabbix |
+
+Acesso: `http://localhost:8080`, usuário `Admin`, senha `zabbix` (padrão do Zabbix; o ambiente é local e descartável).
+
+**Agentes.** Cada host da matriz (dns, web, api, db) tem um contêiner `agent-<host>` com o Zabbix Agent 2 oficial, na mesma pilha de rede do host (`network-mode: container:<host>`). O agente responde no IP do próprio host, e o servidor coleta pela rede de dados (eth1), atravessando o r-matriz, nunca pela gerência fora de banda. Limitação: a CPU e a memória lidas pelo agente são as da VM inteira, e não as de cada contêiner.
+
+**Configuração como código.** Tudo o que se cadastra no Zabbix está em `zabbix/configurar.py`, que usa a API. Ele é idempotente e roda no final do `make up` (ou sozinho, com `make zabbix`). Cadastra o grupo `Cafe Planalto`, os hosts com templates e macros, e desativa o host padrão "Zabbix server":
+
+| Host | IP | Templates |
+|---|---|---|
+| dns | 172.20.10.10 | Linux by Zabbix agent |
+| web | 172.20.10.20 | Linux by Zabbix agent, Nginx by Zabbix agent |
+| api | 172.20.10.21 | Linux by Zabbix agent |
+| db | 172.20.10.22 | Linux by Zabbix agent, PostgreSQL by Zabbix agent 2 |
+
+**Importante:** o banco do Zabbix é recriado a cada `make up`. O que for configurado só pela interface se perde. Mudanças permanentes devem ir para o `configurar.py`.
+
+Para verificar:
+
+```bash
+make zabbix-status
+```
+
+O esperado é os quatro hosts `DISPONIVEL`. Os itens "não suportados" `Number of installed packages` e `r_await`/`w_await` dos discos são esperados em contêineres e podem ser ignorados.
+
 ## Estrutura do repositório
 
 ```
@@ -146,7 +182,7 @@ imagens/     Dockerfiles (dns, api, carga) e config do Nginx
 app/         código da API e SQL do banco
 dns/         Corefile e zona cafeplanalto.lab
 carga/       script k6 e entrypoint
-zabbix/      templates exportados e configs        (em construção)
+zabbix/      script de configuração do Zabbix pela API (configurar.py)
 prometheus/  prometheus.yml, regras, alertmanager  (em construção)
 grafana/     provisionamento e dashboards          (em construção)
 loki/        config do Loki e do coletor de logs   (em construção)
@@ -160,3 +196,6 @@ docs/        diagrama, endereçamento e relatório   (em construção)
 - **`permission denied` no Docker:** abra um terminal novo depois do `usermod`.
 - **Pasta `topologia/clab-cafeplanalto/`:** é gerada a cada deploy e está no `.gitignore`. Não versione.
 - **Mac com Apple Silicon:** as imagens usadas têm versão arm64.
+- **Porta 8080 ocupada:** o frontend do Zabbix usa a 8080 do host. Confira com `ss -ltn | grep 8080` antes do `make up`.
+- **`make zabbix` falhou por tempo esgotado:** o Zabbix leva alguns minutos para inicializar o banco na primeira subida. Rode `make zabbix` de novo; ele é idempotente.
+- **Hosts com interface "desconhecida" logo após o `make up`:** aguarde de 1 a 2 minutos pela primeira coleta.
