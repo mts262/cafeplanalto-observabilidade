@@ -81,6 +81,53 @@ topology:
         - ip route add 172.20.0.0/16 via 172.20.10.1
         - ip route add 10.0.0.0/30 via 172.20.10.1
 
+    zabbix-db:
+      kind: linux
+      image: postgres:16-alpine
+      env:
+        POSTGRES_USER: zabbix
+        POSTGRES_PASSWORD: zabbix123
+        POSTGRES_DB: zabbix
+      exec:
+        - ip addr add 172.20.99.12/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+        - ip route add 10.0.0.0/30 via 172.20.99.1
+
+    zabbix-server:
+      kind: linux
+      image: zabbix/zabbix-server-pgsql:alpine-8.0-latest
+      user: root
+      env:
+        DB_SERVER_HOST: 172.20.99.12
+        POSTGRES_USER: zabbix
+        POSTGRES_PASSWORD: zabbix123
+        POSTGRES_DB: zabbix
+      exec:
+        - ip addr add 172.20.99.10/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+        - ip route add 10.0.0.0/30 via 172.20.99.1
+        - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
+
+    zabbix-web:
+      kind: linux
+      image: zabbix/zabbix-web-nginx-pgsql:alpine-8.0-latest
+      user: root
+      ports:
+        - 8080:8080
+      env:
+        DB_SERVER_HOST: 172.20.99.12
+        POSTGRES_USER: zabbix
+        POSTGRES_PASSWORD: zabbix123
+        POSTGRES_DB: zabbix
+        ZBX_SERVER_HOST: 172.20.99.10
+        ZBX_SERVER_NAME: "Cafe Planalto"
+        PHP_TZ: America/Bahia
+      exec:
+        - ip addr add 172.20.99.11/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+        - ip route add 10.0.0.0/30 via 172.20.99.1
+        - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
+
     cliente-carga:
       kind: linux
       image: cafeplanalto/carga:latest
@@ -103,4 +150,7 @@ topology:
     - endpoints: ["db:eth1", "br-servicos:db1"]
     - endpoints: ["api:eth1", "br-servicos:api1"]
     - endpoints: ["web:eth1", "br-servicos:web1"]
+    - endpoints: ["zabbix-db:eth1", "br-gestao:zdb1"]
+    - endpoints: ["zabbix-server:eth1", "br-gestao:zsrv1"]
+    - endpoints: ["zabbix-web:eth1", "br-gestao:zweb1"]
     - endpoints: ["cliente-carga:eth1", "br-filial:carga1"]
