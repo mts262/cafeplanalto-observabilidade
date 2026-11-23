@@ -26,3 +26,11 @@ check:
 
 dns:
 	docker exec clab-cafeplanalto-cliente-carga nslookup loja.cafeplanalto.lab
+
+.PHONY: zabbix zabbix-status
+
+zabbix:
+	python3 zabbix/configurar.py
+
+zabbix-status:
+	python3 zabbix/configurar.py status

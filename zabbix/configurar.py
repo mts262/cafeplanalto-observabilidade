@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Configura o Zabbix pela API: grupo, hosts e templates (idempotente).
+
+Uso:
+  python3 zabbix/configurar.py          cadastra grupo e hosts
+  python3 zabbix/configurar.py status   mostra disponibilidade e itens dos hosts
+"""
+import json
+import sys
+import time
+import urllib.request
+
+URL = "http://localhost:8080/api_jsonrpc.php"
+USUARIO = "Admin"
+SENHA = "zabbix"
+GRUPO = "Cafe Planalto"
+
+NGINX = {
+    "{$NGINX.STUB_STATUS.HOST}": "127.0.0.1",
+    "{$NGINX.STUB_STATUS.PATH}": "stub_status",
+}
+PG = {
+    "{$PG.USER}": "loja",
+    "{$PG.PASSWORD}": "loja123",
+    "{$PG.DATABASE}": "loja",
+}
+LINUX = "Linux by Zabbix agent"
+
+HOSTS = [
+    {"host": "dns", "ip": "172.20.10.10", "templates": [LINUX], "macros": {}},
+    {"host": "web", "ip": "172.20.10.20",
+     "templates": [LINUX, "Nginx by Zabbix agent"], "macros": NGINX},
+    {"host": "api", "ip": "172.20.10.21", "templates": [LINUX], "macros": {}},
+    {"host": "db", "ip": "172.20.10.22",
+     "templates": [LINUX, "PostgreSQL by Zabbix agent 2"], "macros": PG},
+]
+
+token = None
+
+
+def api(metodo, params=None):
+    corpo = {"jsonrpc": "2.0", "method": metodo,
+             "params": params if params is not None else {}, "id": 1}
+    cab = {"Content-Type": "application/json-rpc"}
+    if token:
+        cab["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(URL, json.dumps(corpo).encode(), cab)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        resp = json.load(r)
+    if "error" in resp:
+        e = resp["error"]
+        raise RuntimeError(f"{metodo}: {e.get('message')} {e.get('data')}")
+    return resp["result"]
+
+
+def esperar_login():
+    global token
+    ultimo = ""
+    limite = time.time() + 300
+    while time.time() < limite:
+        try:
+            token = None
+            token = api("user.login", {"username": USUARIO, "password": SENHA})
+            return
+        except Exception as e:
+            ultimo = str(e)
+            time.sleep(5)
+    sys.exit(f"Zabbix nao ficou pronto em 5 minutos: {ultimo}")
+
+
+def configurar():
+    esperar_login()
+    print("Login na API OK")
+
+    g = api("hostgroup.get", {"filter": {"name": [GRUPO]}})
+    if g:
+        gid = g[0]["groupid"]
+    else:
+        gid = api("hostgroup.create", {"name": GRUPO})["groupids"][0]
+    print("Grupo:", GRUPO)
+
+    nomes = sorted({t for h in HOSTS for t in h["templates"]})
+    achados = api("template.get", {"output": ["templateid", "host"],
+                                   "filter": {"host": nomes}})
+    ids = {t["host"]: t["templateid"] for t in achados}
+    faltando = [n for n in nomes if n not in ids]
+    if faltando:
+        parecidos = api("template.get", {
+            "output": ["host"], "searchByAny": True,
+            "search": {"host": ["Linux", "Nginx", "PostgreSQL"]}})
+        print("Templates NAO encontrados:", faltando)
+        print("Templates parecidos disponiveis:")
+        for nome in sorted(t["host"] for t in parecidos):
+            print("  -", nome)
+        sys.exit(1)
+
+    for h in HOSTS:
+        interface = {"type": 1, "main": 1, "useip": 1,
+                     "ip": h["ip"], "dns": "", "port": "10050"}
+        macros = [{"macro": k, "value": v} for k, v in h["macros"].items()]
+        templates = [{"templateid": ids[t]} for t in h["templates"]]
+        existente = api("host.get", {"output": ["hostid"],
+                                     "filter": {"host": [h["host"]]},
+                                     "selectInterfaces": ["interfaceid"]})
+        if existente:
+            iid = existente[0]["interfaces"][0]["interfaceid"]
+            api("host.update", {
+                "hostid": existente[0]["hostid"],
+                "groups": [{"groupid": gid}],
+                "templates": templates, "macros": macros,
+                "interfaces": [dict(interface, interfaceid=iid)]})
+            print("Host atualizado:", h["host"])
+        else:
+            api("host.create", {
+                "host": h["host"], "interfaces": [interface],
+                "groups": [{"groupid": gid}],
+                "templates": templates, "macros": macros})
+            print("Host criado:", h["host"])
+
+    for s in api("host.get", {"output": ["hostid", "status"],
+                              "filter": {"host": ["Zabbix server"]}}):
+        if s["status"] == "0":
+            api("host.update", {"hostid": s["hostid"], "status": 1})
+            print("Host padrao 'Zabbix server' desativado")
+
+    print("Pronto. Aguarde cerca de 1 minuto e rode: make zabbix-status")
+
+
+def status():
+    esperar_login()
+    nomes = {"0": "desconhecida", "1": "DISPONIVEL", "2": "INDISPONIVEL"}
+    for h in HOSTS:
+        r = api("host.get", {"output": ["hostid"],
+                             "filter": {"host": [h["host"]]},
+                             "selectInterfaces": "extend"})
+        if not r:
+            print(f"{h['host']}: nao cadastrado")
+            continue
+        hid = r[0]["hostid"]
+        disp = nomes.get(r[0]["interfaces"][0].get("available"), "?")
+        total = api("item.get", {"hostids": hid, "countOutput": True})
+        ruins = api("item.get", {"hostids": hid, "filter": {"state": "1"},
+                                 "countOutput": True})
+        print(f"{h['host']:4} interface: {disp:13} itens: {total:>3}  "
+              f"nao suportados: {ruins}")
+        if ruins != "0":
+            for i in api("item.get", {"hostids": hid,
+                                      "filter": {"state": "1"},
+                                      "output": ["name", "error"],
+                                      "limit": 3}):
+                print(f"       - {i['name']}: {i['error'][:90]}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "status":
+        status()
+    else:
+        configurar()
