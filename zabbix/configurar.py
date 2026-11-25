@@ -25,6 +25,8 @@ PG = {
     "{$PG.DATABASE}": "loja",
 }
 LINUX = "Linux by Zabbix agent"
+NETDEV = "Network Generic Device by SNMP"
+SNMPM = {"{$SNMP_COMMUNITY}": "cafeplanalto"}
 
 HOSTS = [
     {"host": "dns", "ip": "172.20.10.10", "templates": [LINUX], "macros": {}},
@@ -33,6 +35,10 @@ HOSTS = [
     {"host": "api", "ip": "172.20.10.21", "templates": [LINUX], "macros": {}},
     {"host": "db", "ip": "172.20.10.22",
      "templates": [LINUX, "PostgreSQL by Zabbix agent 2"], "macros": PG},
+    {"host": "r-matriz", "ip": "172.20.99.1", "snmp": True,
+     "templates": [NETDEV], "macros": SNMPM},
+    {"host": "r-filial", "ip": "10.0.0.2", "snmp": True,
+     "templates": [NETDEV], "macros": SNMPM},
 ]
 
 token = None
@@ -87,7 +93,7 @@ def configurar():
     if faltando:
         parecidos = api("template.get", {
             "output": ["host"], "searchByAny": True,
-            "search": {"host": ["Linux", "Nginx", "PostgreSQL"]}})
+            "search": {"host": ["Linux", "Nginx", "PostgreSQL", "Network", "SNMP"]}})
         print("Templates NAO encontrados:", faltando)
         print("Templates parecidos disponiveis:")
         for nome in sorted(t["host"] for t in parecidos):
@@ -97,6 +103,11 @@ def configurar():
     def cadastrar(h):
         interface = {"type": 1, "main": 1, "useip": 1,
                      "ip": h["ip"], "dns": "", "port": "10050"}
+        if h.get("snmp"):
+            interface = {"type": 2, "main": 1, "useip": 1, "ip": h["ip"],
+                         "dns": "", "port": "161",
+                         "details": {"version": 2, "bulk": 1,
+                                     "community": "{$SNMP_COMMUNITY}"}}
         macros = [{"macro": k, "value": v} for k, v in h["macros"].items()]
         templates = [{"templateid": ids[t]} for t in h["templates"]]
         existente = api("host.get", {"output": ["hostid"],
@@ -133,6 +144,17 @@ def configurar():
         if s["status"] == "0":
             api("host.update", {"hostid": s["hostid"], "status": 1})
             print("Host padrao 'Zabbix server' desativado")
+
+    for h in HOSTS:
+        if not h.get("snmp"):
+            continue
+        r = api("host.get", {"output": ["hostid"], "filter": {"host": [h["host"]]}})
+        regras = api("discoveryrule.get", {"output": ["itemid"], "hostids": r[0]["hostid"]})
+        try:
+            api("task.create", [{"type": 6, "request": {"itemid": x["itemid"]}} for x in regras])
+            print(f"Descoberta de interfaces disparada: {h['host']} ({len(regras)} regras)")
+        except RuntimeError as e:
+            print("Aviso: nao consegui forcar a descoberta:", e)
 
     print("Pronto. Aguarde cerca de 1 minuto e rode: make zabbix-status")
 

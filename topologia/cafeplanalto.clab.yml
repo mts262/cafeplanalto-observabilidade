@@ -8,7 +8,11 @@ topology:
   nodes:
     r-matriz:
       kind: frr
-      image: quay.io/frrouting/frr:containerlab-10.7.1
+      image: cafeplanalto/roteador:latest
+      binds:
+        - ../imagens/roteador/snmpd.conf:/etc/snmp/snmpd.conf:ro
+      exec:
+        - snmpd -C -c /etc/snmp/snmpd.conf -Lf /var/log/snmpd.log -p /var/run/snmpd.pid
       startup-config: configs/r-matriz/frr.conf
       enforce-startup-config: true
       daemons:
@@ -16,7 +20,11 @@ topology:
 
     r-filial:
       kind: frr
-      image: quay.io/frrouting/frr:containerlab-10.7.1
+      image: cafeplanalto/roteador:latest
+      binds:
+        - ../imagens/roteador/snmpd.conf:/etc/snmp/snmpd.conf:ro
+      exec:
+        - snmpd -C -c /etc/snmp/snmpd.conf -Lf /var/log/snmpd.log -p /var/run/snmpd.pid
       startup-config: configs/r-filial/frr.conf
       enforce-startup-config: true
       daemons:
