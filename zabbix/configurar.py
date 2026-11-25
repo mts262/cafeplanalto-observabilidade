@@ -26,6 +26,7 @@ PG = {
 }
 LINUX = "Linux by Zabbix agent"
 NETDEV = "Network Generic Device by SNMP"
+ICMP = "ICMP Ping"
 SNMPM = {"{$SNMP_COMMUNITY}": "cafeplanalto"}
 
 HOSTS = [
@@ -36,9 +37,11 @@ HOSTS = [
     {"host": "db", "ip": "172.20.10.22",
      "templates": [LINUX, "PostgreSQL by Zabbix agent 2"], "macros": PG},
     {"host": "r-matriz", "ip": "172.20.99.1", "snmp": True,
-     "templates": [NETDEV], "macros": SNMPM},
+     "templates": [NETDEV, ICMP], "macros": SNMPM},
     {"host": "r-filial", "ip": "10.0.0.2", "snmp": True,
-     "templates": [NETDEV], "macros": SNMPM},
+     "templates": [NETDEV, ICMP], "macros": SNMPM},
+    {"host": "cliente-carga", "ip": "172.20.20.20",
+     "templates": [ICMP], "macros": {}},
 ]
 
 token = None
@@ -93,7 +96,7 @@ def configurar():
     if faltando:
         parecidos = api("template.get", {
             "output": ["host"], "searchByAny": True,
-            "search": {"host": ["Linux", "Nginx", "PostgreSQL", "Network", "SNMP"]}})
+            "search": {"host": ["Linux", "Nginx", "PostgreSQL", "Network", "SNMP", "ICMP"]}})
         print("Templates NAO encontrados:", faltando)
         print("Templates parecidos disponiveis:")
         for nome in sorted(t["host"] for t in parecidos):
@@ -139,6 +142,29 @@ def configurar():
         else:
             sys.exit(f"Falha ao cadastrar {h['host']}")
 
+    def grafico(host, nome, itens):
+        r = api("host.get", {"output": ["hostid"], "filter": {"host": [host]}})
+        hid = r[0]["hostid"]
+        if api("graph.get", {"hostids": hid, "filter": {"name": nome}}):
+            return
+        todos = api("item.get", {"hostids": hid, "search": {"key_": "icmpping"},
+                                 "output": ["itemid", "key_"]})
+        gitems = []
+        for chave, cor, lado in itens:
+            achado = [i for i in todos
+                      if i["key_"] == chave or i["key_"].startswith(chave + "[")]
+            if not achado:
+                print("Aviso: item", chave, "nao encontrado em", host)
+                return
+            gitems.append({"itemid": achado[0]["itemid"], "color": cor,
+                           "yaxisside": lado})
+        api("graph.create", {"name": nome, "width": 900, "height": 200,
+                             "gitems": gitems})
+        print("Grafico criado:", nome)
+
+    grafico("r-filial", "Enlace WAN: latencia (s) e perda (%) por ICMP",
+            [("icmppingsec", "1A7C11", 0), ("icmppingloss", "F63100", 1)])
+
     for s in api("host.get", {"output": ["hostid", "status"],
                               "filter": {"host": ["Zabbix server"]}}):
         if s["status"] == "0":
@@ -180,12 +206,44 @@ def status():
             for i in api("item.get", {"hostids": hid,
                                       "filter": {"state": "1"},
                                       "output": ["name", "error"],
-                                      "limit": 20}):
+                                      "limit": 50}):
+                if "installed packages" in i["name"] or "waiting time" in i["name"]:
+                    continue
                 print(f"       - {i['name']}: {i['error'][:90]}")
+
+
+def status_icmp():
+    print("--- ICMP (ping, perda e latencia) ---")
+    for h in HOSTS:
+        if ICMP not in h["templates"]:
+            continue
+        r = api("host.get", {"output": ["hostid"], "filter": {"host": [h["host"]]}})
+        if not r:
+            continue
+        itens = api("item.get", {"hostids": r[0]["hostid"],
+                                 "search": {"key_": "icmpping"},
+                                 "output": ["key_", "lastvalue"]})
+        v = {i["key_"].split("[")[0]: i["lastvalue"] for i in itens}
+
+        def num(k):
+            try:
+                return float(v.get(k, ""))
+            except ValueError:
+                return None
+
+        ping, perda, seg = num("icmpping"), num("icmppingloss"), num("icmppingsec")
+        if ping is None:
+            res = "sem dado"
+        else:
+            res = "ok" if ping == 1 else "FALHOU"
+        lat = "sem dado" if seg is None else f"{seg * 1000:.2f} ms"
+        pct = "?" if perda is None else f"{perda:.0f}"
+        print(f"{h['host']:14} {h['ip']:14} ping={res:8} perda={pct}%  latencia={lat}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "status":
         status()
+        status_icmp()
     else:
         configurar()
