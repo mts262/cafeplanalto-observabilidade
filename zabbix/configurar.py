@@ -58,14 +58,14 @@ HOSTS = [
         "host": "r-matriz",
         "ip": "172.20.99.1",
         "snmp": True,
-        "templates": [NETDEV, ICMP],
+        "templates": [NETDEV],
         "macros": SNMPM,
     },
     {
         "host": "r-filial",
         "ip": "10.0.0.2",
         "snmp": True,
-        "templates": [NETDEV, ICMP],
+        "templates": [NETDEV],
         "macros": SNMPM,
     },
     {
