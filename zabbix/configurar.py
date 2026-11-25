@@ -37,9 +37,9 @@ HOSTS = [
     {"host": "db", "ip": "172.20.10.22",
      "templates": [LINUX, "PostgreSQL by Zabbix agent 2"], "macros": PG},
     {"host": "r-matriz", "ip": "172.20.99.1", "snmp": True,
-     "templates": [NETDEV, ICMP], "macros": SNMPM},
+     "templates": [NETDEV], "macros": SNMPM},
     {"host": "r-filial", "ip": "10.0.0.2", "snmp": True,
-     "templates": [NETDEV, ICMP], "macros": SNMPM},
+     "templates": [NETDEV], "macros": SNMPM},
     {"host": "cliente-carga", "ip": "172.20.20.20",
      "templates": [ICMP], "macros": {}},
 ]
@@ -75,6 +75,125 @@ def esperar_login():
             ultimo = str(e)
             time.sleep(5)
     sys.exit(f"Zabbix nao ficou pronto em 5 minutos: {ultimo}")
+
+
+# ---------------------------------------------------------------- Z5 e Z6
+LOJA = "Loja"
+LOJA_URL = "http://loja.cafeplanalto.lab"
+
+# (host, nome, chave, descricao do trigger de servico parado)
+SERVICOS = [
+    ("web", "Porta 80 (Nginx)", "net.tcp.service[tcp,127.0.0.1,80]", "Nginx"),
+    ("api", "Porta 8000 (API)", "net.tcp.service[tcp,127.0.0.1,8000]", "API"),
+    ("db", "Porta 5432 (PostgreSQL)", "net.tcp.service[tcp,127.0.0.1,5432]", "PostgreSQL"),
+    ("dns", "Porta 53 (CoreDNS)", "net.tcp.service[tcp,127.0.0.1,53]", "CoreDNS"),
+]
+
+# Severidades: 2 aviso, 3 media, 4 alta, 5 desastre
+T_MATRIZ = "Roteador r-matriz inacessivel (ICMP)"
+T_WAN = "Enlace WAN fora: r-filial inacessivel (ICMP)"
+T_WAN_RUIM = "Enlace WAN degradado (latencia > 150 ms ou perda > 2%)"
+T_HOST = "Host indisponivel (agente sem resposta)"
+T_LOJA = "Loja fora do ar (cenario web falhou)"
+T_CARGA = "Host cliente-carga inacessivel (ICMP)"
+CPU = "CPU alta (media > 80% em 5 min)"
+
+# (host, nome, expressao, severidade, [(host, nome) dos quais depende])
+# A ordem importa: a dependencia precisa existir antes de quem depende dela.
+TRIGGERS = [
+    ("r-matriz", T_MATRIZ, "max(/r-matriz/icmpping,#3)=0", 4, []),
+    ("r-filial", T_WAN, "max(/r-filial/icmpping,#3)=0", 5,
+     [("r-matriz", T_MATRIZ)]),
+    ("r-filial", T_WAN_RUIM,
+     "avg(/r-filial/icmppingsec,#3)>0.15 or avg(/r-filial/icmppingloss,#3)>2", 3,
+     [("r-filial", T_WAN)]),
+    ("cliente-carga", T_CARGA, "max(/cliente-carga/icmpping,#3)=0", 4,
+     [("r-filial", T_WAN)]),
+] + [
+    (h, T_HOST, f"nodata(/{h}/agent.ping,3m)=1", 4, [("r-matriz", T_MATRIZ)])
+    for h in ("dns", "web", "api", "db")
+] + [
+    (h, f"Servico parado: {nome}", f"max(/{h}/{chave},#2)=0", 4, [(h, T_HOST)])
+    for h, _, chave, nome in SERVICOS
+] + [
+    (h, CPU, f"avg(/{h}/system.cpu.util,5m)>80", 2, [(h, T_HOST)])
+    for h in ("dns", "web", "api", "db")
+] + [
+    ("web", T_LOJA, f"last(/web/web.test.fail[{LOJA}])<>0", 5,
+     [("r-matriz", T_MATRIZ)]),
+]
+
+
+def id_host(nome):
+    r = api("host.get", {"output": ["hostid"], "filter": {"host": [nome]}})
+    if not r:
+        sys.exit(f"Host {nome} nao cadastrado")
+    return r[0]["hostid"]
+
+
+def itens_de_servico():
+    """Itens do agente que checam se a porta de cada servico responde."""
+    for host, nome, chave, _ in SERVICOS:
+        hid = id_host(host)
+        if api("item.get", {"hostids": hid, "filter": {"key_": chave}}):
+            continue
+        ifaces = api("hostinterface.get", {"hostids": hid, "filter": {"type": 1}})
+        api("item.create", {"name": f"Servico: {nome}", "key_": chave,
+                            "hostid": hid, "type": 0, "value_type": 3,
+                            "delay": "30s", "interfaceid": ifaces[0]["interfaceid"]})
+        print("Item criado:", host, chave)
+
+
+def cenario_web():
+    """Z5: cenario com 2 passos (catalogo e pedido), rodando a partir do servidor."""
+    hid = id_host("web")
+    if api("httptest.get", {"hostids": hid, "filter": {"name": LOJA}}):
+        return
+    api("httptest.create", {
+        "name": LOJA, "hostid": hid, "delay": "30s", "retries": 1,
+        "steps": [
+            {"name": "Abrir catalogo", "no": 1, "url": f"{LOJA_URL}/produtos",
+             "status_codes": "200", "required": "Cafe", "timeout": "10s"},
+            {"name": "Criar pedido", "no": 2, "url": f"{LOJA_URL}/pedidos",
+             "posts": '{"produto_id": 1, "quantidade": 1}',
+             "headers": [{"name": "Content-Type", "value": "application/json"}],
+             "status_codes": "201", "required": "produto_id", "timeout": "10s"},
+        ]})
+    print("Cenario web criado:", LOJA)
+
+
+def triggers():
+    """Z6: triggers com severidade e dependencias (evita alertas em cascata)."""
+    ids = {}
+
+    def achar(host, nome):
+        if (host, nome) not in ids:
+            r = api("trigger.get", {"hostids": id_host(host), "output": ["triggerid"],
+                                    "filter": {"description": nome}})
+            if not r:
+                sys.exit(f"Trigger '{nome}' de {host} nao existe (dependencia)")
+            ids[(host, nome)] = r[0]["triggerid"]
+        return ids[(host, nome)]
+
+    for host, nome, expr, prio, deps in TRIGGERS:
+        dep = [{"triggerid": achar(*d)} for d in deps]
+        r = api("trigger.get", {"hostids": id_host(host), "output": ["triggerid"],
+                                "filter": {"description": nome}})
+        try:
+            if r:
+                api("trigger.update", {"triggerid": r[0]["triggerid"],
+                                       "expression": expr, "priority": prio,
+                                       "dependencies": dep})
+                ids[(host, nome)] = r[0]["triggerid"]
+            else:
+                criado = api("trigger.create", {"description": nome,
+                                                "expression": expr, "priority": prio,
+                                                "dependencies": dep})
+                ids[(host, nome)] = criado["triggerids"][0]
+        except RuntimeError as e:
+            print(f"ERRO no trigger '{nome}' ({host}): {e}")
+            continue
+    print(f"Triggers configurados: {len(TRIGGERS)}")
 
 
 def configurar():
@@ -165,6 +284,10 @@ def configurar():
     grafico("r-filial", "Enlace WAN: latencia (s) e perda (%) por ICMP",
             [("icmppingsec", "1A7C11", 0), ("icmppingloss", "F63100", 1)])
 
+    itens_de_servico()
+    cenario_web()
+    triggers()
+
     for s in api("host.get", {"output": ["hostid", "status"],
                               "filter": {"host": ["Zabbix server"]}}):
         if s["status"] == "0":
@@ -215,7 +338,7 @@ def status():
 def status_icmp():
     print("--- ICMP (ping, perda e latencia) ---")
     for h in HOSTS:
-        if ICMP not in h["templates"]:
+        if ICMP not in h["templates"] and NETDEV not in h["templates"]:
             continue
         r = api("host.get", {"output": ["hostid"], "filter": {"host": [h["host"]]}})
         if not r:
@@ -241,9 +364,22 @@ def status_icmp():
         print(f"{h['host']:14} {h['ip']:14} ping={res:8} perda={pct}%  latencia={lat}")
 
 
+def status_problemas():
+    print("--- Problemas ativos (dependentes ocultos) ---")
+    ps = api("trigger.get", {"output": ["description", "priority"],
+                             "filter": {"value": 1}, "monitored": True,
+                             "skipDependent": True, "selectHosts": ["host"],
+                             "sortfield": "priority", "sortorder": "DESC"})
+    if not ps:
+        print("nenhum")
+    for t in ps:
+        print(f"[sev {t['priority']}] {t['hosts'][0]['host']}: {t['description']}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "status":
         status()
         status_icmp()
+        status_problemas()
     else:
         configurar()
