@@ -185,6 +185,85 @@ topology:
         - ip route add 10.0.0.0/30 via 172.20.20.1
         - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
 
+
+    prometheus:
+      kind: linux
+      image: prom/prometheus:v3.16.0
+      ports:
+        - 9090:9090
+      binds:
+        - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - ../prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+        - ../dados/prometheus:/prometheus
+      cmd: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=3d
+      exec:
+        - ip addr add 172.20.99.20/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    grafana:
+      kind: linux
+      image: grafana/grafana:13.3.2
+      ports:
+        - 3000:3000
+      env:
+        GF_SECURITY_ADMIN_USER: admin
+        GF_SECURITY_ADMIN_PASSWORD: admin
+        GF_USERS_ALLOW_SIGN_UP: "false"
+      binds:
+        - ../grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+        - ../grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+        - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+        - ../dados/grafana:/var/lib/grafana
+      exec:
+        - ip addr add 172.20.99.21/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    alertmanager:
+      kind: linux
+      image: prom/alertmanager:v0.35.1
+      ports:
+        - 9093:9093
+      binds:
+        - ../alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      cmd: --config.file=/etc/alertmanager/alertmanager.yml
+      exec:
+        - ip addr add 172.20.99.22/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    loki:
+      kind: linux
+      image: grafana/loki:3.7.10
+      binds:
+        - ../loki/config.yml:/etc/loki/config.yml:ro
+        - ../dados/loki:/loki
+      cmd: -config.file=/etc/loki/config.yml
+      exec:
+        - ip addr add 172.20.99.23/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    alloy:
+      kind: linux
+      image: grafana/alloy:v1.22.0
+      user: root
+      binds:
+        - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
+        - /var/run/docker.sock:/var/run/docker.sock
+      cmd: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+      exec:
+        - ip addr add 172.20.99.24/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    blackbox:
+      kind: linux
+      image: prom/blackbox-exporter:v0.29.1
+      binds:
+        - ../blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+      cmd: --config.file=/etc/blackbox/blackbox.yml
+      exec:
+        - ip addr add 172.20.20.30/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.20.1
+        - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
+
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
     - endpoints: ["r-matriz:eth2", "br-servicos:svc1"]
@@ -198,3 +277,10 @@ topology:
     - endpoints: ["zabbix-server:eth1", "br-gestao:zsrv1"]
     - endpoints: ["zabbix-web:eth1", "br-gestao:zweb1"]
     - endpoints: ["cliente-carga:eth1", "br-filial:carga1"]
+
+    - endpoints: ["prometheus:eth1", "br-gestao:prom1"]
+    - endpoints: ["grafana:eth1", "br-gestao:graf1"]
+    - endpoints: ["alertmanager:eth1", "br-gestao:am1"]
+    - endpoints: ["loki:eth1", "br-gestao:loki1"]
+    - endpoints: ["alloy:eth1", "br-gestao:alloy1"]
+    - endpoints: ["blackbox:eth1", "br-filial:probe1"]

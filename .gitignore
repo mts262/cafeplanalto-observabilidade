@@ -222,3 +222,6 @@ __marimo__/
 # Containerlab (gerado a cada deploy)
 clab-*/
 .clab-*
+
+# Dados persistentes dos servicos de monitoramento
+dados/
