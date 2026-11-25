@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-"""Configura o Zabbix pela API: grupo, hosts e templates (idempotente).
 
-Uso:
-  python3 zabbix/configurar.py          cadastra grupo e hosts
-  python3 zabbix/configurar.py status   mostra disponibilidade e itens dos hosts
-"""
+#!/usr/bin/env python3
+"""Configura o Zabbix pela API: hosts, templates, cenario web e triggers."""
+
 import json
 import sys
 import time
@@ -19,77 +16,179 @@ NGINX = {
     "{$NGINX.STUB_STATUS.HOST}": "127.0.0.1",
     "{$NGINX.STUB_STATUS.PATH}": "stub_status",
 }
+
 PG = {
     "{$PG.USER}": "loja",
     "{$PG.PASSWORD}": "loja123",
     "{$PG.DATABASE}": "loja",
 }
+
 LINUX = "Linux by Zabbix agent"
 NETDEV = "Network Generic Device by SNMP"
 ICMP = "ICMP Ping"
+
 SNMPM = {"{$SNMP_COMMUNITY}": "cafeplanalto"}
 
 HOSTS = [
-    {"host": "dns", "ip": "172.20.10.10", "templates": [LINUX], "macros": {}},
-    {"host": "web", "ip": "172.20.10.20",
-     "templates": [LINUX, "Nginx by Zabbix agent"], "macros": NGINX},
-    {"host": "api", "ip": "172.20.10.21", "templates": [LINUX], "macros": {}},
-    {"host": "db", "ip": "172.20.10.22",
-     "templates": [LINUX, "PostgreSQL by Zabbix agent 2"], "macros": PG},
-    {"host": "r-matriz", "ip": "172.20.99.1", "snmp": True,
-     "templates": [NETDEV], "macros": SNMPM},
-    {"host": "r-filial", "ip": "10.0.0.2", "snmp": True,
-     "templates": [NETDEV], "macros": SNMPM},
-    {"host": "cliente-carga", "ip": "172.20.20.20",
-     "templates": [ICMP], "macros": {}},
+    {
+        "host": "dns",
+        "ip": "172.20.10.10",
+        "templates": [LINUX],
+        "macros": {},
+    },
+    {
+        "host": "web",
+        "ip": "172.20.10.20",
+        "templates": [LINUX, "Nginx by Zabbix agent"],
+        "macros": NGINX,
+    },
+    {
+        "host": "api",
+        "ip": "172.20.10.21",
+        "templates": [LINUX],
+        "macros": {},
+    },
+    {
+        "host": "db",
+        "ip": "172.20.10.22",
+        "templates": [LINUX, "PostgreSQL by Zabbix agent 2"],
+        "macros": PG,
+    },
+    {
+        "host": "r-matriz",
+        "ip": "172.20.99.1",
+        "snmp": True,
+        "templates": [NETDEV, ICMP],
+        "macros": SNMPM,
+    },
+    {
+        "host": "r-filial",
+        "ip": "10.0.0.2",
+        "snmp": True,
+        "templates": [NETDEV, ICMP],
+        "macros": SNMPM,
+    },
+    {
+        "host": "cliente-carga",
+        "ip": "172.20.20.20",
+        "templates": [ICMP],
+        "macros": {},
+    },
 ]
 
 token = None
 
 
+# ---------------------------------------------------------------------
+# API DO ZABBIX
+# ---------------------------------------------------------------------
+
 def api(metodo, params=None):
-    corpo = {"jsonrpc": "2.0", "method": metodo,
-             "params": params if params is not None else {}, "id": 1}
-    cab = {"Content-Type": "application/json-rpc"}
+    corpo = {
+        "jsonrpc": "2.0",
+        "method": metodo,
+        "params": params if params is not None else {},
+        "id": 1,
+    }
+
+    cabecalho = {"Content-Type": "application/json-rpc"}
+
     if token:
-        cab["Authorization"] = "Bearer " + token
-    req = urllib.request.Request(URL, json.dumps(corpo).encode(), cab)
-    with urllib.request.urlopen(req, timeout=180) as r:
-        resp = json.load(r)
-    if "error" in resp:
-        e = resp["error"]
-        raise RuntimeError(f"{metodo}: {e.get('message')} {e.get('data')}")
-    return resp["result"]
+        cabecalho["Authorization"] = "Bearer " + token
+
+    requisicao = urllib.request.Request(
+        URL,
+        json.dumps(corpo).encode(),
+        cabecalho,
+    )
+
+    with urllib.request.urlopen(requisicao, timeout=30) as resposta:
+        resultado = json.load(resposta)
+
+    if "error" in resultado:
+        erro = resultado["error"]
+        raise RuntimeError(
+            f"{metodo}: {erro.get('message')} {erro.get('data')}"
+        )
+
+    return resultado["result"]
 
 
 def esperar_login():
     global token
-    ultimo = ""
+
+    ultimo_erro = ""
     limite = time.time() + 300
+
     while time.time() < limite:
         try:
             token = None
-            token = api("user.login", {"username": USUARIO, "password": SENHA})
+            token = api(
+                "user.login",
+                {
+                    "username": USUARIO,
+                    "password": SENHA,
+                },
+            )
             return
-        except Exception as e:
-            ultimo = str(e)
+
+        except Exception as erro:
+            ultimo_erro = str(erro)
+            print("Aguardando API do Zabbix:", ultimo_erro)
             time.sleep(5)
-    sys.exit(f"Zabbix nao ficou pronto em 5 minutos: {ultimo}")
+
+    sys.exit(f"Zabbix nao ficou pronto em 5 minutos: {ultimo_erro}")
 
 
-# ---------------------------------------------------------------- Z5 e Z6
+def id_host(nome):
+    resultado = api(
+        "host.get",
+        {
+            "output": ["hostid"],
+            "filter": {"host": [nome]},
+        },
+    )
+
+    if not resultado:
+        sys.exit(f"Host {nome} nao cadastrado")
+
+    return resultado[0]["hostid"]
+
+
+# ---------------------------------------------------------------------
+# Z5 E Z6: CENARIO WEB E TRIGGERS
+# ---------------------------------------------------------------------
+
 LOJA = "Loja"
 LOJA_URL = "http://loja.cafeplanalto.lab"
 
-# (host, nome, chave, descricao do trigger de servico parado)
 SERVICOS = [
-    ("web", "Porta 80 (Nginx)", "net.tcp.service[tcp,127.0.0.1,80]", "Nginx"),
-    ("api", "Porta 8000 (API)", "net.tcp.service[tcp,127.0.0.1,8000]", "API"),
-    ("db", "Porta 5432 (PostgreSQL)", "net.tcp.service[tcp,127.0.0.1,5432]", "PostgreSQL"),
-    ("dns", "Porta 53 (CoreDNS)", "net.tcp.service[tcp,127.0.0.1,53]", "CoreDNS"),
+    (
+        "web",
+        "Porta 80 (Nginx)",
+        "net.tcp.service[tcp,127.0.0.1,80]",
+        "Nginx",
+    ),
+    (
+        "api",
+        "Porta 8000 (API)",
+        "net.tcp.service[tcp,127.0.0.1,8000]",
+        "API",
+    ),
+    (
+        "db",
+        "Porta 5432 (PostgreSQL)",
+        "net.tcp.service[tcp,127.0.0.1,5432]",
+        "PostgreSQL",
+    ),
+    (
+        "dns",
+        "Porta 53 (CoreDNS)",
+        "net.tcp.service[tcp,127.0.0.1,53]",
+        "CoreDNS",
+    ),
 ]
 
-# Severidades: 2 aviso, 3 media, 4 alta, 5 desastre
 T_MATRIZ = "Roteador r-matriz inacessivel (ICMP)"
 T_WAN = "Enlace WAN fora: r-filial inacessivel (ICMP)"
 T_WAN_RUIM = "Enlace WAN degradado (latencia > 150 ms ou perda > 2%)"
@@ -98,286 +197,791 @@ T_LOJA = "Loja fora do ar (cenario web falhou)"
 T_CARGA = "Host cliente-carga inacessivel (ICMP)"
 CPU = "CPU alta (media > 80% em 5 min)"
 
-# (host, nome, expressao, severidade, [(host, nome) dos quais depende])
-# A ordem importa: a dependencia precisa existir antes de quem depende dela.
+# (host, nome, expressao, severidade, dependencias)
+# A ordem e importante: a dependencia deve existir primeiro.
+
 TRIGGERS = [
-    ("r-matriz", T_MATRIZ, "max(/r-matriz/icmpping,#3)=0", 4, []),
-    ("r-filial", T_WAN, "max(/r-filial/icmpping,#3)=0", 5,
-     [("r-matriz", T_MATRIZ)]),
-    ("r-filial", T_WAN_RUIM,
-     "avg(/r-filial/icmppingsec,#3)>0.15 or avg(/r-filial/icmppingloss,#3)>2", 3,
-     [("r-filial", T_WAN)]),
-    ("cliente-carga", T_CARGA, "max(/cliente-carga/icmpping,#3)=0", 4,
-     [("r-filial", T_WAN)]),
-] + [
-    (h, T_HOST, f"nodata(/{h}/agent.ping,3m)=1", 4, [("r-matriz", T_MATRIZ)])
-    for h in ("dns", "web", "api", "db")
-] + [
-    (h, f"Servico parado: {nome}", f"max(/{h}/{chave},#2)=0", 4, [(h, T_HOST)])
-    for h, _, chave, nome in SERVICOS
-] + [
-    (h, CPU, f"avg(/{h}/system.cpu.util,5m)>80", 2, [(h, T_HOST)])
-    for h in ("dns", "web", "api", "db")
-] + [
-    ("web", T_LOJA, f"last(/web/web.test.fail[{LOJA}])<>0", 5,
-     [("r-matriz", T_MATRIZ)]),
+    (
+        "r-matriz",
+        T_MATRIZ,
+        "max(/r-matriz/icmpping,#3)=0",
+        4,
+        [],
+    ),
+    (
+        "r-filial",
+        T_WAN,
+        "max(/r-filial/icmpping,#3)=0",
+        5,
+        [("r-matriz", T_MATRIZ)],
+    ),
+    (
+        "r-filial",
+        T_WAN_RUIM,
+        "avg(/r-filial/icmppingsec,#3)>0.15 or avg(/r-filial/icmppingloss,#3)>2",
+        3,
+        [("r-filial", T_WAN)],
+    ),
+    (
+        "cliente-carga",
+        T_CARGA,
+        "max(/cliente-carga/icmpping,#3)=0",
+        4,
+        [("r-filial", T_WAN)],
+    ),
+]
+
+TRIGGERS += [
+    (
+        host,
+        T_HOST,
+        f"nodata(/{host}/agent.ping,3m)=1",
+        4,
+        [("r-matriz", T_MATRIZ)],
+    )
+    for host in ("dns", "web", "api", "db")
+]
+
+TRIGGERS += [
+    (
+        host,
+        f"Servico parado: {nome}",
+        f"max(/{host}/{chave},#2)=0",
+        4,
+        [(host, T_HOST)],
+    )
+    for host, _, chave, nome in SERVICOS
+]
+
+TRIGGERS += [
+    (
+        host,
+        CPU,
+        f"avg(/{host}/system.cpu.util,5m)>80",
+        2,
+        [(host, T_HOST)],
+    )
+    for host in ("dns", "web", "api", "db")
+]
+
+TRIGGERS += [
+    (
+        "web",
+        T_LOJA,
+        f"last(/web/web.test.fail[{LOJA}])<>0",
+        5,
+        [("r-matriz", T_MATRIZ)],
+    )
 ]
 
 
-def id_host(nome):
-    r = api("host.get", {"output": ["hostid"], "filter": {"host": [nome]}})
-    if not r:
-        sys.exit(f"Host {nome} nao cadastrado")
-    return r[0]["hostid"]
-
-
 def itens_de_servico():
-    """Itens do agente que checam se a porta de cada servico responde."""
+    """Cria itens que verificam se as portas dos servicos respondem."""
+
     for host, nome, chave, _ in SERVICOS:
         hid = id_host(host)
-        if api("item.get", {"hostids": hid, "filter": {"key_": chave}}):
+
+        existentes = api(
+            "item.get",
+            {
+                "hostids": hid,
+                "filter": {"key_": chave},
+                "output": ["itemid"],
+            },
+        )
+
+        if existentes:
             continue
-        ifaces = api("hostinterface.get", {"hostids": hid, "filter": {"type": 1}})
-        api("item.create", {"name": f"Servico: {nome}", "key_": chave,
-                            "hostid": hid, "type": 0, "value_type": 3,
-                            "delay": "30s", "interfaceid": ifaces[0]["interfaceid"]})
+
+        interfaces = api(
+            "hostinterface.get",
+            {
+                "hostids": hid,
+                "filter": {"type": 1},
+            },
+        )
+
+        if not interfaces:
+            print(f"ERRO: interface de agente nao encontrada em {host}")
+            continue
+
+        api(
+            "item.create",
+            {
+                "name": f"Servico: {nome}",
+                "key_": chave,
+                "hostid": hid,
+                "type": 0,
+                "value_type": 3,
+                "delay": "30s",
+                "interfaceid": interfaces[0]["interfaceid"],
+            },
+        )
+
         print("Item criado:", host, chave)
 
 
 def cenario_web():
-    """Z5: cenario com 2 passos (catalogo e pedido), rodando a partir do servidor."""
+    """Z5: cenario com dois passos, catalogo e criacao de pedido."""
+
     hid = id_host("web")
-    if api("httptest.get", {"hostids": hid, "filter": {"name": LOJA}}):
-        return
-    api("httptest.create", {
-        "name": LOJA, "hostid": hid, "delay": "30s", "retries": 1,
-        "steps": [
-            {"name": "Abrir catalogo", "no": 1, "url": f"{LOJA_URL}/produtos",
-             "status_codes": "200", "required": "Cafe", "timeout": "10s"},
-            {"name": "Criar pedido", "no": 2, "url": f"{LOJA_URL}/pedidos",
-             "posts": '{"produto_id": 1, "quantidade": 1}',
-             "headers": [{"name": "Content-Type", "value": "application/json"}],
-             "status_codes": "201", "required": "produto_id", "timeout": "10s"},
-        ]})
-    print("Cenario web criado:", LOJA)
+
+    passos = [
+        {
+            "name": "Abrir catalogo",
+            "no": 1,
+            "url": f"{LOJA_URL}/produtos",
+            "status_codes": "200",
+            "required": "Cafe",
+            "timeout": "10s",
+        },
+        {
+            "name": "Criar pedido",
+            "no": 2,
+            "url": f"{LOJA_URL}/pedidos",
+            "posts": '{"produto_id": 1, "quantidade": 1}',
+            "headers": [
+                {
+                    "name": "Content-Type",
+                    "value": "application/json",
+                }
+            ],
+            "status_codes": "201",
+            "required": "produto_id",
+            "timeout": "10s",
+        },
+    ]
+
+    existente = api(
+        "httptest.get",
+        {
+            "hostids": hid,
+            "filter": {"name": LOJA},
+            "output": ["httptestid", "name"],
+        },
+    )
+
+    dados = {
+        "name": LOJA,
+        "delay": "30s",
+        "retries": 1,
+        "steps": passos,
+    }
+
+    if existente:
+        dados["httptestid"] = existente[0]["httptestid"]
+        api("httptest.update", dados)
+        print("Cenario web atualizado:", LOJA)
+    else:
+        dados["hostid"] = hid
+        api("httptest.create", dados)
+        print("Cenario web criado:", LOJA)
 
 
 def triggers():
-    """Z6: triggers com severidade e dependencias (evita alertas em cascata)."""
+    """Z6: cria ou atualiza triggers com suas dependencias."""
+
     ids = {}
+    configuradas = 0
+    falhas = 0
 
     def achar(host, nome):
-        if (host, nome) not in ids:
-            r = api("trigger.get", {"hostids": id_host(host), "output": ["triggerid"],
-                                    "filter": {"description": nome}})
-            if not r:
-                sys.exit(f"Trigger '{nome}' de {host} nao existe (dependencia)")
-            ids[(host, nome)] = r[0]["triggerid"]
-        return ids[(host, nome)]
+        chave = (host, nome)
 
-    for host, nome, expr, prio, deps in TRIGGERS:
-        dep = [{"triggerid": achar(*d)} for d in deps]
-        r = api("trigger.get", {"hostids": id_host(host), "output": ["triggerid"],
-                                "filter": {"description": nome}})
+        if chave not in ids:
+            resultado = api(
+                "trigger.get",
+                {
+                    "hostids": id_host(host),
+                    "output": ["triggerid"],
+                    "filter": {"description": nome},
+                },
+            )
+
+            if not resultado:
+                sys.exit(
+                    f"Trigger '{nome}' de {host} nao existe "
+                    "e e necessaria como dependencia"
+                )
+
+            ids[chave] = resultado[0]["triggerid"]
+
+        return ids[chave]
+
+    for host, nome, expressao, prioridade, dependencias in TRIGGERS:
         try:
-            if r:
-                api("trigger.update", {"triggerid": r[0]["triggerid"],
-                                       "expression": expr, "priority": prio,
-                                       "dependencies": dep})
-                ids[(host, nome)] = r[0]["triggerid"]
-            else:
-                criado = api("trigger.create", {"description": nome,
-                                                "expression": expr, "priority": prio,
-                                                "dependencies": dep})
-                ids[(host, nome)] = criado["triggerids"][0]
-        except RuntimeError as e:
-            print(f"ERRO no trigger '{nome}' ({host}): {e}")
-            continue
-    print(f"Triggers configurados: {len(TRIGGERS)}")
+            deps = [
+                {"triggerid": achar(host_dep, nome_dep)}
+                for host_dep, nome_dep in dependencias
+            ]
 
+            existente = api(
+                "trigger.get",
+                {
+                    "hostids": id_host(host),
+                    "output": ["triggerid"],
+                    "filter": {"description": nome},
+                },
+            )
+
+            if existente:
+                trigger_id = existente[0]["triggerid"]
+
+                api(
+                    "trigger.update",
+                    {
+                        "triggerid": trigger_id,
+                        "expression": expressao,
+                        "priority": prioridade,
+                        "dependencies": deps,
+                    },
+                )
+
+                ids[(host, nome)] = trigger_id
+
+            else:
+                criada = api(
+                    "trigger.create",
+                    {
+                        "description": nome,
+                        "expression": expressao,
+                        "priority": prioridade,
+                        "dependencies": deps,
+                    },
+                )
+
+                ids[(host, nome)] = criada["triggerids"][0]
+
+            configuradas += 1
+
+        except Exception as erro:
+            falhas += 1
+            print(f"ERRO na trigger '{nome}' ({host}): {erro}")
+
+    print(
+        f"Triggers configuradas: {configuradas}/{len(TRIGGERS)}"
+    )
+
+    if falhas:
+        sys.exit(f"{falhas} trigger(s) apresentaram erro.")
+
+
+# ---------------------------------------------------------------------
+# CADASTRO E ATUALIZACAO DOS HOSTS
+# ---------------------------------------------------------------------
+
+def cadastrar_hosts(gid):
+    nomes = sorted(
+        {
+            template
+            for host in HOSTS
+            for template in host["templates"]
+        }
+    )
+
+    achados = api(
+        "template.get",
+        {
+            "output": ["templateid", "host"],
+            "filter": {"host": nomes},
+        },
+    )
+
+    ids_templates = {
+        template["host"]: template["templateid"]
+        for template in achados
+    }
+
+    faltando = [
+        nome for nome in nomes
+        if nome not in ids_templates
+    ]
+
+    if faltando:
+        print("Templates NAO encontrados:", faltando)
+
+        parecidos = api(
+            "template.get",
+            {
+                "output": ["host"],
+                "searchByAny": True,
+                "search": {
+                    "host": [
+                        "Linux",
+                        "Nginx",
+                        "PostgreSQL",
+                        "Network",
+                        "SNMP",
+                        "ICMP",
+                    ]
+                },
+            },
+        )
+
+        print("Templates parecidos disponiveis:")
+
+        for template in sorted(
+            item["host"] for item in parecidos
+        ):
+            print("  -", template)
+
+        sys.exit(1)
+
+    for host in HOSTS:
+        nome = host["host"]
+
+        interface = {
+            "type": 1,
+            "main": 1,
+            "useip": 1,
+            "ip": host["ip"],
+            "dns": "",
+            "port": "10050",
+        }
+
+        if host.get("snmp"):
+            interface = {
+                "type": 2,
+                "main": 1,
+                "useip": 1,
+                "ip": host["ip"],
+                "dns": "",
+                "port": "161",
+                "details": {
+                    "version": 2,
+                    "bulk": 1,
+                    "community": "{$SNMP_COMMUNITY}",
+                },
+            }
+
+        macros = [
+            {"macro": chave, "value": valor}
+            for chave, valor in host["macros"].items()
+        ]
+
+        templates = [
+            {"templateid": ids_templates[nome_template]}
+            for nome_template in host["templates"]
+        ]
+
+        existente = api(
+            "host.get",
+            {
+                "output": ["hostid"],
+                "filter": {"host": [nome]},
+                "selectInterfaces": ["interfaceid"],
+            },
+        )
+
+        if existente:
+            interfaces = existente[0]["interfaces"]
+
+            if interfaces:
+                interface["interfaceid"] = interfaces[0]["interfaceid"]
+
+            api(
+                "host.update",
+                {
+                    "hostid": existente[0]["hostid"],
+                    "groups": [{"groupid": gid}],
+                    "templates": templates,
+                    "macros": macros,
+                    "interfaces": [interface],
+                },
+            )
+
+            print("Host atualizado:", nome)
+
+        else:
+            api(
+                "host.create",
+                {
+                    "host": nome,
+                    "interfaces": [interface],
+                    "groups": [{"groupid": gid}],
+                    "templates": templates,
+                    "macros": macros,
+                },
+            )
+
+            print("Host criado:", nome)
+
+
+# ---------------------------------------------------------------------
+# GRAFICO ICMP
+# ---------------------------------------------------------------------
+
+def grafico(host, nome, itens):
+    resultado = api(
+        "host.get",
+        {
+            "output": ["hostid"],
+            "filter": {"host": [host]},
+        },
+    )
+
+    if not resultado:
+        print("Aviso: host nao encontrado para o grafico:", host)
+        return
+
+    hid = resultado[0]["hostid"]
+
+    todos = api(
+        "item.get",
+        {
+            "hostids": hid,
+            "output": ["itemid", "key_"],
+        },
+    )
+
+    itens_grafico = []
+
+    for chave, cor, lado in itens:
+        encontrados = [
+            item for item in todos
+            if item["key_"] == chave
+            or item["key_"].startswith(chave + "[")
+        ]
+
+        if not encontrados:
+            print("Aviso: item", chave, "nao encontrado em", host)
+            return
+
+        itens_grafico.append(
+            {
+                "itemid": encontrados[0]["itemid"],
+                "color": cor,
+                "yaxisside": lado,
+            }
+        )
+
+    existente = api(
+        "graph.get",
+        {
+            "hostids": hid,
+            "filter": {"name": nome},
+            "output": ["graphid"],
+        },
+    )
+
+    if existente:
+        api(
+            "graph.update",
+            {
+                "graphid": existente[0]["graphid"],
+                "gitems": itens_grafico,
+            },
+        )
+
+        print("Grafico atualizado:", nome)
+
+    else:
+        api(
+            "graph.create",
+            {
+                "name": nome,
+                "width": 900,
+                "height": 200,
+                "gitems": itens_grafico,
+            },
+        )
+
+        print("Grafico criado:", nome)
+
+
+# ---------------------------------------------------------------------
+# CONFIGURACAO PRINCIPAL
+# ---------------------------------------------------------------------
 
 def configurar():
     esperar_login()
     print("Login na API OK")
 
-    g = api("hostgroup.get", {"filter": {"name": [GRUPO]}})
-    if g:
-        gid = g[0]["groupid"]
+    grupos = api(
+        "hostgroup.get",
+        {"filter": {"name": [GRUPO]}},
+    )
+
+    if grupos:
+        gid = grupos[0]["groupid"]
     else:
-        gid = api("hostgroup.create", {"name": GRUPO})["groupids"][0]
+        gid = api(
+            "hostgroup.create",
+            {"name": GRUPO},
+        )["groupids"][0]
+
     print("Grupo:", GRUPO)
 
-    nomes = sorted({t for h in HOSTS for t in h["templates"]})
-    achados = api("template.get", {"output": ["templateid", "host"],
-                                   "filter": {"host": nomes}})
-    ids = {t["host"]: t["templateid"] for t in achados}
-    faltando = [n for n in nomes if n not in ids]
-    if faltando:
-        parecidos = api("template.get", {
-            "output": ["host"], "searchByAny": True,
-            "search": {"host": ["Linux", "Nginx", "PostgreSQL", "Network", "SNMP", "ICMP"]}})
-        print("Templates NAO encontrados:", faltando)
-        print("Templates parecidos disponiveis:")
-        for nome in sorted(t["host"] for t in parecidos):
-            print("  -", nome)
-        sys.exit(1)
+    cadastrar_hosts(gid)
 
-    def cadastrar(h):
-        interface = {"type": 1, "main": 1, "useip": 1,
-                     "ip": h["ip"], "dns": "", "port": "10050"}
-        if h.get("snmp"):
-            interface = {"type": 2, "main": 1, "useip": 1, "ip": h["ip"],
-                         "dns": "", "port": "161",
-                         "details": {"version": 2, "bulk": 1,
-                                     "community": "{$SNMP_COMMUNITY}"}}
-        macros = [{"macro": k, "value": v} for k, v in h["macros"].items()]
-        templates = [{"templateid": ids[t]} for t in h["templates"]]
-        existente = api("host.get", {"output": ["hostid"],
-                                     "filter": {"host": [h["host"]]},
-                                     "selectInterfaces": ["interfaceid"]})
-        if existente:
-            iid = existente[0]["interfaces"][0]["interfaceid"]
-            api("host.update", {
-                "hostid": existente[0]["hostid"],
-                "groups": [{"groupid": gid}],
-                "templates": templates, "macros": macros,
-                "interfaces": [dict(interface, interfaceid=iid)]})
-            print("Host atualizado:", h["host"])
-        else:
-            api("host.create", {
-                "host": h["host"], "interfaces": [interface],
-                "groups": [{"groupid": gid}],
-                "templates": templates, "macros": macros})
-            print("Host criado:", h["host"])
-
-    for h in HOSTS:
-        for tentativa in range(1, 4):
-            try:
-                cadastrar(h)
-                break
-            except OSError as e:
-                print(f"{h['host']}: demorou demais ({e}), tentativa {tentativa}/3")
-                time.sleep(10)
-        else:
-            sys.exit(f"Falha ao cadastrar {h['host']}")
-
-    def grafico(host, nome, itens):
-        r = api("host.get", {"output": ["hostid"], "filter": {"host": [host]}})
-        hid = r[0]["hostid"]
-        if api("graph.get", {"hostids": hid, "filter": {"name": nome}}):
-            return
-        todos = api("item.get", {"hostids": hid, "search": {"key_": "icmpping"},
-                                 "output": ["itemid", "key_"]})
-        gitems = []
-        for chave, cor, lado in itens:
-            achado = [i for i in todos
-                      if i["key_"] == chave or i["key_"].startswith(chave + "[")]
-            if not achado:
-                print("Aviso: item", chave, "nao encontrado em", host)
-                return
-            gitems.append({"itemid": achado[0]["itemid"], "color": cor,
-                           "yaxisside": lado})
-        api("graph.create", {"name": nome, "width": 900, "height": 200,
-                             "gitems": gitems})
-        print("Grafico criado:", nome)
-
-    grafico("r-filial", "Enlace WAN: latencia (s) e perda (%) por ICMP",
-            [("icmppingsec", "1A7C11", 0), ("icmppingloss", "F63100", 1)])
+    grafico(
+        "r-filial",
+        "Enlace WAN: latencia (s) e perda (%) por ICMP",
+        [
+            ("icmppingsec", "1A7C11", 0),
+            ("icmppingloss", "F63100", 1),
+        ],
+    )
 
     itens_de_servico()
     cenario_web()
     triggers()
 
-    for s in api("host.get", {"output": ["hostid", "status"],
-                              "filter": {"host": ["Zabbix server"]}}):
-        if s["status"] == "0":
-            api("host.update", {"hostid": s["hostid"], "status": 1})
+    servidores = api(
+        "host.get",
+        {
+            "output": ["hostid", "status"],
+            "filter": {"host": ["Zabbix server"]},
+        },
+    )
+
+    for servidor in servidores:
+        if servidor["status"] == "0":
+            api(
+                "host.update",
+                {
+                    "hostid": servidor["hostid"],
+                    "status": 1,
+                },
+            )
             print("Host padrao 'Zabbix server' desativado")
 
-    for h in HOSTS:
-        if not h.get("snmp"):
+    for host in HOSTS:
+        if not host.get("snmp"):
             continue
-        r = api("host.get", {"output": ["hostid"], "filter": {"host": [h["host"]]}})
-        regras = api("discoveryrule.get", {"output": ["itemid"], "hostids": r[0]["hostid"]})
+
+        resultado = api(
+            "host.get",
+            {
+                "output": ["hostid"],
+                "filter": {"host": [host["host"]]},
+            },
+        )
+
+        regras = api(
+            "discoveryrule.get",
+            {
+                "output": ["itemid"],
+                "hostids": resultado[0]["hostid"],
+            },
+        )
+
+        if not regras:
+            continue
+
         try:
-            api("task.create", [{"type": 6, "request": {"itemid": x["itemid"]}} for x in regras])
-            print(f"Descoberta de interfaces disparada: {h['host']} ({len(regras)} regras)")
-        except RuntimeError as e:
-            print("Aviso: nao consegui forcar a descoberta:", e)
+            api(
+                "task.create",
+                [
+                    {
+                        "type": 6,
+                        "request": {"itemid": regra["itemid"]},
+                    }
+                    for regra in regras
+                ],
+            )
 
-    print("Pronto. Aguarde cerca de 1 minuto e rode: make zabbix-status")
+            print(
+                f"Descoberta de interfaces disparada: "
+                f"{host['host']} ({len(regras)} regras)"
+            )
 
+        except RuntimeError as erro:
+            print("Aviso: descoberta nao iniciada:", erro)
+
+    print("Configuracao concluida.")
+    print("Aguarde cerca de 1 minuto e execute: make zabbix-status")
+
+
+# ---------------------------------------------------------------------
+# DIAGNOSTICO
+# ---------------------------------------------------------------------
 
 def status():
     esperar_login()
-    nomes = {"0": "desconhecida", "1": "DISPONIVEL", "2": "INDISPONIVEL"}
-    for h in HOSTS:
-        r = api("host.get", {"output": ["hostid"],
-                             "filter": {"host": [h["host"]]},
-                             "selectInterfaces": "extend"})
-        if not r:
-            print(f"{h['host']}: nao cadastrado")
+
+    nomes = {
+        "0": "desconhecida",
+        "1": "DISPONIVEL",
+        "2": "INDISPONIVEL",
+    }
+
+    for host in HOSTS:
+        resultado = api(
+            "host.get",
+            {
+                "output": ["hostid"],
+                "filter": {"host": [host["host"]]},
+                "selectInterfaces": "extend",
+            },
+        )
+
+        if not resultado:
+            print(f"{host['host']}: nao cadastrado")
             continue
-        hid = r[0]["hostid"]
-        disp = nomes.get(r[0]["interfaces"][0].get("available"), "?")
-        total = api("item.get", {"hostids": hid, "countOutput": True})
-        ruins = api("item.get", {"hostids": hid, "filter": {"state": "1"},
-                                 "countOutput": True})
-        print(f"{h['host']:4} interface: {disp:13} itens: {total:>3}  "
-              f"nao suportados: {ruins}")
-        if ruins != "0":
-            for i in api("item.get", {"hostids": hid,
-                                      "filter": {"state": "1"},
-                                      "output": ["name", "error"],
-                                      "limit": 50}):
-                if "installed packages" in i["name"] or "waiting time" in i["name"]:
+
+        hid = resultado[0]["hostid"]
+        interfaces = resultado[0]["interfaces"]
+
+        disponibilidade = "desconhecida"
+
+        if interfaces:
+            disponibilidade = nomes.get(
+                interfaces[0].get("available"),
+                "?",
+            )
+
+        total = api(
+            "item.get",
+            {
+                "hostids": hid,
+                "countOutput": True,
+            },
+        )
+
+        ruins = api(
+            "item.get",
+            {
+                "hostids": hid,
+                "filter": {"state": "1"},
+                "countOutput": True,
+            },
+        )
+
+        print(
+            f"{host['host']:14} interface: {disponibilidade:13} "
+            f"itens: {int(total):3} nao suportados: {int(ruins)}"
+        )
+
+        if int(ruins) > 0:
+            itens = api(
+                "item.get",
+                {
+                    "hostids": hid,
+                    "filter": {"state": "1"},
+                    "output": ["name", "error"],
+                    "limit": 50,
+                },
+            )
+
+            for item in itens:
+                if (
+                    "installed packages" in item["name"]
+                    or "waiting time" in item["name"]
+                ):
                     continue
-                print(f"       - {i['name']}: {i['error'][:90]}")
+
+                print(
+                    f"       - {item['name']}: "
+                    f"{item['error'][:90]}"
+                )
 
 
 def status_icmp():
     print("--- ICMP (ping, perda e latencia) ---")
-    for h in HOSTS:
-        if ICMP not in h["templates"] and NETDEV not in h["templates"]:
-            continue
-        r = api("host.get", {"output": ["hostid"], "filter": {"host": [h["host"]]}})
-        if not r:
-            continue
-        itens = api("item.get", {"hostids": r[0]["hostid"],
-                                 "search": {"key_": "icmpping"},
-                                 "output": ["key_", "lastvalue"]})
-        v = {i["key_"].split("[")[0]: i["lastvalue"] for i in itens}
 
-        def num(k):
+    for host in HOSTS:
+        if (
+            ICMP not in host["templates"]
+            and NETDEV not in host["templates"]
+        ):
+            continue
+
+        resultado = api(
+            "host.get",
+            {
+                "output": ["hostid"],
+                "filter": {"host": [host["host"]]},
+            },
+        )
+
+        if not resultado:
+            continue
+
+        itens = api(
+            "item.get",
+            {
+                "hostids": resultado[0]["hostid"],
+                "search": {"key_": "icmpping"},
+                "output": ["key_", "lastvalue"],
+            },
+        )
+
+        valores = {
+            item["key_"].split("[")[0]: item["lastvalue"]
+            for item in itens
+        }
+
+        def numero(chave):
             try:
-                return float(v.get(k, ""))
-            except ValueError:
+                return float(valores.get(chave, ""))
+            except (ValueError, TypeError):
                 return None
 
-        ping, perda, seg = num("icmpping"), num("icmppingloss"), num("icmppingsec")
+        ping = numero("icmpping")
+        perda = numero("icmppingloss")
+        segundos = numero("icmppingsec")
+
         if ping is None:
-            res = "sem dado"
+            resultado_ping = "sem dado"
         else:
-            res = "ok" if ping == 1 else "FALHOU"
-        lat = "sem dado" if seg is None else f"{seg * 1000:.2f} ms"
-        pct = "?" if perda is None else f"{perda:.0f}"
-        print(f"{h['host']:14} {h['ip']:14} ping={res:8} perda={pct}%  latencia={lat}")
+            resultado_ping = "ok" if ping == 1 else "FALHOU"
+
+        latencia = (
+            "sem dado"
+            if segundos is None
+            else f"{segundos * 1000:.2f} ms"
+        )
+
+        percentual = "?" if perda is None else f"{perda:.0f}"
+
+        print(
+            f"{host['host']:14} {host['ip']:14} "
+            f"ping={resultado_ping:8} "
+            f"perda={percentual}% latencia={latencia}"
+        )
 
 
 def status_problemas():
     print("--- Problemas ativos (dependentes ocultos) ---")
-    ps = api("trigger.get", {"output": ["description", "priority"],
-                             "filter": {"value": 1}, "monitored": True,
-                             "skipDependent": True, "selectHosts": ["host"],
-                             "sortfield": "priority", "sortorder": "DESC"})
-    if not ps:
-        print("nenhum")
-    for t in ps:
-        print(f"[sev {t['priority']}] {t['hosts'][0]['host']}: {t['description']}")
 
+    problemas = api(
+        "trigger.get",
+        {
+            "output": ["description", "priority"],
+            "filter": {"value": 1},
+            "monitored": True,
+            "skipDependent": True,
+            "selectHosts": ["host"],
+            "sortfield": "priority",
+            "sortorder": "DESC",
+        },
+    )
+
+    if not problemas:
+        print("nenhum")
+        return
+
+    for trigger in problemas:
+        host = (
+            trigger["hosts"][0]["host"]
+            if trigger.get("hosts")
+            else "host desconhecido"
+        )
+
+        print(
+            f"[sev {trigger['priority']}] "
+            f"{host}: {trigger['description']}"
+        )
+
+
+# ---------------------------------------------------------------------
+# EXECUCAO
+# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "status":
+        esperar_login()
         status()
         status_icmp()
         status_problemas()
