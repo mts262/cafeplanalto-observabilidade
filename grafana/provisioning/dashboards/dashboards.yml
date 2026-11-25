@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Cafe Planalto
+    orgId: 1
+    folder: Cafe Planalto
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

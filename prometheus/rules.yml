@@ -1,0 +1,41 @@
+groups:
+  - name: cafeplanalto
+    rules:
+      - alert: APIIndisponivel
+        expr: up{job="api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API da loja indisponivel"
+          description: "Prometheus nao consegue coletar metricas da API."
+
+      - alert: LojaIndisponivel
+        expr: probe_success{job="blackbox"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sonda da filial detectou falha na loja"
+          description: "Falha ao acessar {{ $labels.instance }}."
+
+      - alert: LatenciaElevadaAPI
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia p95 da API acima de 500 ms"
+
+      - alert: TaxaErrosHTTPAlta
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mais de 5% de respostas HTTP 5xx"
