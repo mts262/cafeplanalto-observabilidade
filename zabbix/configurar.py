@@ -102,7 +102,7 @@ def api(metodo, params=None):
         cabecalho,
     )
 
-    with urllib.request.urlopen(requisicao, timeout=30) as resposta:
+    with urllib.request.urlopen(requisicao, timeout=180) as resposta:
         resultado = json.load(resposta)
 
     if "error" in resultado:
@@ -986,4 +986,12 @@ if __name__ == "__main__":
         status_icmp()
         status_problemas()
     else:
-        configurar()
+        for tentativa in range(1, 4):
+            try:
+                configurar()
+                break
+            except OSError as erro:
+                print(f'Zabbix demorou a responder ({erro}); tentativa {tentativa}/3')
+                time.sleep(15)
+        else:
+            sys.exit('Zabbix nao respondeu a tempo')

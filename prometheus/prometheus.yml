@@ -9,7 +9,7 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - 172.20.99.22:9093
+            - 172.20.99.21:9093
 
 scrape_configs:
   - job_name: prometheus

@@ -10,6 +10,7 @@ build:
 	docker build -t cafeplanalto/roteador:latest imagens/roteador
 
 up: build
+	@mkdir -p dados/prometheus dados/grafana dados/loki && chmod -R a+rwX dados
 	@for b in $(BRIDGES); do sudo ip link add $$b type bridge 2>/dev/null || true; sudo ip link set $$b up; done
 	sudo containerlab deploy -t $(TOPO)
 	$(MAKE) zabbix

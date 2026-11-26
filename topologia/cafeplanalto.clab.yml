@@ -215,7 +215,7 @@ topology:
         - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
         - ../dados/grafana:/var/lib/grafana
       exec:
-        - ip addr add 172.20.99.21/24 dev eth1
+        - ip addr add 172.20.99.22/24 dev eth1
         - ip route add 172.20.0.0/16 via 172.20.99.1
 
     alertmanager:
@@ -227,7 +227,7 @@ topology:
         - ../alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       cmd: --config.file=/etc/alertmanager/alertmanager.yml
       exec:
-        - ip addr add 172.20.99.22/24 dev eth1
+        - ip addr add 172.20.99.21/24 dev eth1
         - ip route add 172.20.0.0/16 via 172.20.99.1
 
     loki:
