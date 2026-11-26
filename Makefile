@@ -13,6 +13,7 @@ up: build
 	@mkdir -p dados/prometheus dados/grafana dados/loki && chmod -R a+rwX dados
 	@for b in $(BRIDGES); do sudo ip link add $$b type bridge 2>/dev/null || true; sudo ip link set $$b up; done
 	sudo containerlab deploy -t $(TOPO)
+	$(MAKE) ips-extra
 	$(MAKE) zabbix
 
 down:
@@ -37,3 +38,15 @@ zabbix:
 
 zabbix-status:
 	python3 zabbix/configurar.py status
+
+.PHONY: ips-extra
+
+ips-extra:
+	@for par in loki:172.20.99.23 alloy:172.20.99.24; do \
+	  nome=$${par%%:*}; ip=$${par##*:}; \
+	  pid=$$(docker inspect -f '{{.State.Pid}}' clab-cafeplanalto-$$nome); \
+	  sudo nsenter -t $$pid -n ip addr add $$ip/24 dev eth1 2>/dev/null || true; \
+	  sudo nsenter -t $$pid -n ip link set eth1 up; \
+	  sudo nsenter -t $$pid -n ip route add 172.20.0.0/16 via 172.20.99.1 2>/dev/null || true; \
+	  sudo nsenter -t $$pid -n ip route add 10.0.0.0/30 via 172.20.99.1 2>/dev/null || true; \
+	done

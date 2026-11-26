@@ -237,9 +237,6 @@ topology:
         - ../loki/config.yml:/etc/loki/config.yml:ro
         - ../dados/loki:/loki
       cmd: -config.file=/etc/loki/config.yml
-      exec:
-        - ip addr add 172.20.99.23/24 dev eth1
-        - ip route add 172.20.0.0/16 via 172.20.99.1
 
     alloy:
       kind: linux
@@ -249,9 +246,6 @@ topology:
         - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
         - /var/run/docker.sock:/var/run/docker.sock
       cmd: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
-      exec:
-        - ip addr add 172.20.99.24/24 dev eth1
-        - ip route add 172.20.0.0/16 via 172.20.99.1
 
     blackbox:
       kind: linux

@@ -225,3 +225,6 @@ clab-*/
 
 # Dados persistentes dos servicos de monitoramento
 dados/
+
+# Credenciais de notificacao (nunca versionar)
+zabbix/notificacao.env
