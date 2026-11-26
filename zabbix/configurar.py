@@ -693,6 +693,288 @@ def grafico(host, nome, itens):
 # CONFIGURACAO PRINCIPAL
 # ---------------------------------------------------------------------
 
+# ---------------------------------------------------------------------
+# Z7 / Z8: MAPA DE REDE, NOTIFICACAO E DASHBOARD
+# ---------------------------------------------------------------------
+
+def _carregar_notificacao_env():
+    env_path = "zabbix/notificacao.env"
+    cfg = {}
+    try:
+        with open(env_path) as f:
+            for linha in f:
+                linha = linha.strip()
+                if not linha or linha.startswith("#") or "=" not in linha:
+                    continue
+                k, v = linha.split("=", 1)
+                cfg[k.strip()] = v.strip()
+    except FileNotFoundError:
+        return None
+    if not cfg.get("SMTP_SERVER") or not cfg.get("SMTP_USER") or not cfg.get("SMTP_SENHA"):
+        return None
+    cfg.setdefault("SMTP_PORT", "587")
+    cfg.setdefault("EMAIL_DESTINO", cfg["SMTP_USER"])
+    return cfg
+
+
+def notificacao_email(gid):
+    cfg = _carregar_notificacao_env()
+    if not cfg:
+        print("Aviso: zabbix/notificacao.env nao encontrado ou incompleto; pulando Z8 e-mail.")
+        return
+
+    senha_limpa = cfg["SMTP_SENHA"].replace(" ", "")
+    api(
+        "mediatype.update",
+        {
+            "mediatypeid": "1",
+            "type": "0",
+            "name": "Email",
+            "smtp_server": cfg["SMTP_SERVER"],
+            "smtp_port": str(cfg["SMTP_PORT"]),
+            "smtp_security": "1",
+            "smtp_authentication": "1",
+            "username": cfg["SMTP_USER"],
+            "passwd": senha_limpa,
+            "smtp_email": cfg["SMTP_USER"],
+            "status": "0",
+        },
+    )
+
+    users = api("user.get", {"filter": {"username": ["Admin"]}, "output": ["userid"]})
+    if users:
+        uid = users[0]["userid"]
+        api(
+            "user.update",
+            {
+                "userid": uid,
+                "medias": [
+                    {
+                        "mediatypeid": "1",
+                        "sendto": cfg["EMAIL_DESTINO"],
+                        "active": "0",
+                        "severity": "63",
+                        "period": "1-7,00:00-24:00",
+                    }
+                ],
+            },
+        )
+
+    nome_acao = "Cafe Planalto - Notificacao Email"
+    acoes = api("action.get", {"filter": {"name": [nome_acao]}, "output": ["actionid"]})
+    params_acao = {
+        "name": nome_acao,
+        "eventsource": "0",
+        "status": "0",
+        "esc_period": "60s",
+        "filter": {
+            "evaltype": "0",
+            "conditions": [
+                {
+                    "conditiontype": "0",
+                    "operator": "0",
+                    "value": gid,
+                }
+            ],
+        },
+        "operations": [
+            {
+                "operationtype": "0",
+                "esc_period": "0",
+                "esc_step_from": "1",
+                "esc_step_to": "1",
+                "evaltype": "0",
+                "opmessage_usr": [{"userid": uid}],
+                "opmessage": {
+                    "default_msg": "0",
+                    "mediatypeid": "1",
+                    "subject": "[{EVENT.SEVERITY}] {EVENT.NAME} ({HOST.HOST})",
+                    "message": (
+                        "Evento: {EVENT.NAME}\n"
+                        "Host: {HOST.NAME} ({HOST.IP})\n"
+                        "Severidade: {EVENT.SEVERITY}\n"
+                        "Estado: {EVENT.VALUE}\n"
+                        "Horario: {EVENT.DATE} {EVENT.TIME}"
+                    ),
+                },
+            }
+        ],
+        "recovery_operations": [
+            {
+                "operationtype": "0",
+                "opmessage_usr": [{"userid": uid}],
+                "opmessage": {
+                    "default_msg": "0",
+                    "mediatypeid": "1",
+                    "subject": "[RESOLVIDO] {EVENT.NAME} ({HOST.HOST})",
+                    "message": (
+                        "Recuperado: {EVENT.NAME}\n"
+                        "Host: {HOST.NAME} ({HOST.IP})\n"
+                        "Horario: {EVENT.RECOVERY.DATE} {EVENT.RECOVERY.TIME}"
+                    ),
+                },
+            }
+        ],
+    }
+
+    if acoes:
+        params_acao["actionid"] = acoes[0]["actionid"]
+        api("action.update", params_acao)
+    else:
+        api("action.create", params_acao)
+    print("Notificacao SMTP e acao Zabbix configuradas:", cfg["EMAIL_DESTINO"])
+
+
+def mapa_rede():
+    nome_mapa = "Cafe Planalto - Topologia"
+    coords = {
+        "r-matriz": (420, 80),
+        "r-filial": (780, 80),
+        "dns": (120, 220),
+        "web": (280, 220),
+        "api": (440, 220),
+        "db": (600, 220),
+        "cliente-carga": (780, 240),
+    }
+
+    selements = []
+    selement_por_host = {}
+    idx = 1
+    for h_nome, (x, y) in coords.items():
+        try:
+            hid = id_host(h_nome)
+        except RuntimeError:
+            continue
+        selem_id = str(idx)
+        selements.append(
+            {
+                "selementid": selem_id,
+                "elementtype": "0",
+                "iconid_off": "185",
+                "label": "{HOST.NAME}\n{HOST.CONN}",
+                "label_location": "0",
+                "x": str(x),
+                "y": str(y),
+                "elements": [{"hostid": hid}],
+            }
+        )
+        selement_por_host[h_nome] = selem_id
+        idx += 1
+
+    def link_trafego(h1, h2, host_if, label_base):
+        if h1 not in selement_por_host or h2 not in selement_por_host:
+            return None
+        lbl = label_base
+        try:
+            hid = id_host(h_nome := host_if)
+            itens = api(
+                "item.get",
+                {
+                    "hostids": hid,
+                    "search": {"key_": "net.if.in[ifInOctets"},
+                    "output": ["key_"],
+                },
+            )
+            if itens:
+                chave_in = itens[0]["key_"]
+                lbl = f"{label_base}\nRX: {{{h_nome}:{chave_in}.last()}}"
+        except RuntimeError:
+            pass
+        return {
+            "selementid1": selement_por_host[h1],
+            "selementid2": selement_por_host[h2],
+            "label": lbl,
+            "drawtype": "0",
+            "color": "00CC00",
+        }
+
+    links = []
+    for candidato in [
+        link_trafego("r-matriz", "r-filial", "r-filial", "WAN 10.0.0.0/30"),
+        link_trafego("r-matriz", "dns", "r-matriz", "LAN Servicos"),
+        link_trafego("r-matriz", "web", "r-matriz", "LAN Servicos"),
+        link_trafego("r-matriz", "api", "r-matriz", "LAN Servicos"),
+        link_trafego("r-matriz", "db", "r-matriz", "LAN Servicos"),
+        link_trafego("r-filial", "cliente-carga", "r-filial", "LAN Filial"),
+    ]:
+        if candidato:
+            links.append(candidato)
+
+    existentes = api("map.get", {"filter": {"name": [nome_mapa]}, "output": ["sysmapid"]})
+    params_mapa = {
+        "name": nome_mapa,
+        "width": "960",
+        "height": "360",
+        "label_type": "0",
+        "expandproblem": "1",
+        "markelements": "1",
+        "selements": selements,
+        "links": links,
+    }
+    if existentes:
+        params_mapa["sysmapid"] = existentes[0]["sysmapid"]
+        api("map.update", params_mapa)
+    else:
+        api("map.create", params_mapa)
+    print(f"Mapa de rede configurado: {nome_mapa} ({len(selements)} hosts, {len(links)} enlaces)")
+
+
+def dashboard_infra(gid):
+    nome_dash = "Cafe Planalto - Infraestrutura"
+    widgets = [
+        {
+            "type": "problems",
+            "name": "Problemas ativos (Cafe Planalto)",
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "5",
+            "fields": [
+                {
+                    "type": "2",
+                    "name": "groupids",
+                    "value": gid,
+                }
+            ],
+        },
+        {
+            "type": "hostavail",
+            "name": "Disponibilidade dos hosts",
+            "x": "0",
+            "y": "5",
+            "width": "6",
+            "height": "4",
+            "fields": [
+                {
+                    "type": "2",
+                    "name": "groupids",
+                    "value": gid,
+                }
+            ],
+        },
+        {
+            "type": "map",
+            "name": "Topologia Cafe Planalto",
+            "x": "6",
+            "y": "5",
+            "width": "6",
+            "height": "4",
+        },
+    ]
+
+    existentes = api("dashboard.get", {"filter": {"name": [nome_dash]}, "output": ["dashboardid"]})
+    params_dash = {
+        "name": nome_dash,
+        "pages": [{"widgets": widgets}],
+    }
+    if existentes:
+        params_dash["dashboardid"] = existentes[0]["dashboardid"]
+        api("dashboard.update", params_dash)
+    else:
+        api("dashboard.create", params_dash)
+    print(f"Dashboard configurado: {nome_dash}")
+
+
 def configurar():
     esperar_login()
     print("Login na API OK")
@@ -788,6 +1070,10 @@ def configurar():
 
         except RuntimeError as erro:
             print("Aviso: descoberta nao iniciada:", erro)
+
+    mapa_rede()
+    notificacao_email(gid)
+    dashboard_infra(gid)
 
     print("Configuracao concluida.")
     print("Aguarde cerca de 1 minuto e execute: make zabbix-status")
@@ -995,3 +1281,4 @@ if __name__ == "__main__":
                 time.sleep(15)
         else:
             sys.exit('Zabbix nao respondeu a tempo')
+
