@@ -1,5 +1,5 @@
 groups:
-  - name: cafeplanalto
+  - name: cafeplanalto_slo_e_disponibilidade
     rules:
       - alert: APIIndisponivel
         expr: up{job="api"} == 0
@@ -8,24 +8,43 @@ groups:
           severity: critical
         annotations:
           summary: "API da loja indisponivel"
-          description: "Prometheus nao consegue coletar metricas da API."
+          description: "Prometheus nao consegue coletar metricas em {{ $labels.instance }}."
 
       - alert: LojaIndisponivel
-        expr: probe_success{job="blackbox"} == 0
+        expr: probe_success{job="blackbox_http"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Sonda da filial detectou falha na loja"
-          description: "Falha ao acessar {{ $labels.instance }}."
+          summary: "Sonda HTTP da filial falhou"
+          description: "Falha ao acessar {{ $labels.instance }} a partir da filial."
 
-      - alert: LatenciaElevadaAPI
-        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
+      - alert: SondaDNSFalhando
+        expr: probe_success{job="blackbox_dns"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Resolucao DNS da loja falhando"
+          description: "Falha na consulta DNS em {{ $labels.instance }}."
+
+      - alert: SondaICMPFalhando
+        expr: probe_success{job="blackbox_icmp"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia/alcance ICMP falhando"
+          description: "Falha de ping ICMP para {{ $labels.instance }}."
+
+      - alert: ViolacaoSLOLatenciaP95
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.300
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "Latencia p95 da API acima de 500 ms"
+          summary: "SLO de latencia p95 (> 300 ms) violado"
+          description: "Latencia p95 atual da API excedeu 300 ms."
 
       - alert: TaxaErrosHTTPAlta
         expr: |
@@ -36,6 +55,16 @@ groups:
           ) > 0.05
         for: 2m
         labels:
-          severity: warning
+          severity: critical
         annotations:
           summary: "Mais de 5% de respostas HTTP 5xx"
+          description: "Taxa de erro 5xx acima do limite de 5% em janela de 5m."
+
+      - alert: ExporterOuBancoIndisponivel
+        expr: up{job=~"node_exporter|cadvisor|postgres_exporter|nginx_exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exporter/coletor indisponivel"
+          description: "Job {{ $labels.job }} ({{ $labels.instance }}) sem coleta."

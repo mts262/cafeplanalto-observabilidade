@@ -2,11 +2,14 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: local
-  group_by: ["alertname", "job"]
+  receiver: padrao
+  group_by: ["alertname", "job", "severity"]
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 2h
 
 receivers:
-  - name: local
+  - name: padrao
+    webhook_configs:
+      - url: "http://172.20.99.22:3000/api/alertmanager/webhook"
+        send_resolved: true

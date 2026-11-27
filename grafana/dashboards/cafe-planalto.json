@@ -1,95 +1,95 @@
 {
   "uid": "cafe-planalto",
-  "title": "Cafe Planalto - Observabilidade",
-  "tags": ["cafe-planalto", "prometheus"],
+  "title": "Cafe Planalto - Observabilidade (USE, RED, Negocio e SLO)",
+  "tags": ["cafe-planalto", "prometheus", "loki", "slo"],
   "timezone": "browser",
   "schemaVersion": 39,
   "refresh": "15s",
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
+  "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
       "id": 1,
-      "title": "Requisicoes por segundo",
+      "title": "RED - Requisicoes por segundo (API)",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "sum by (rota) (rate(http_requests_total[5m]))",
-          "legendFormat": "{{rota}}"
-        }
+        { "expr": "sum by (rota) (rate(http_requests_total[5m]))", "legendFormat": "{{rota}}" }
       ]
     },
     {
       "id": 2,
-      "title": "Latencia p95 da API",
+      "title": "RED / SLO - Latencia p95 API (Meta <= 0.3s)",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "p95"
-        }
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" }
       ],
-      "fieldConfig": {
-        "defaults": {"unit": "s"},
-        "overrides": []
-      }
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.3 }] } } }
     },
     {
       "id": 3,
-      "title": "Sondas HTTP da filial",
-      "type": "stat",
-      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 6},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "title": "RED - Taxa de erro HTTP 5xx",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "probe_success",
-          "legendFormat": "{{instance}}"
-        }
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.001)", "legendFormat": "5xx ratio" }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "min": 0,
-          "max": 1,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "red", "value": 0},
-              {"color": "green", "value": 1}
-            ]
-          }
-        },
-        "overrides": []
-      }
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
     },
     {
       "id": 4,
-      "title": "Pedidos criados por segundo",
+      "title": "Negocio - Pedidos criados/min e Faturamento (R$)",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 6},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "rate(pedidos_criados_total[5m])",
-          "legendFormat": "Pedidos/s"
-        }
+        { "expr": "rate(pedidos_criados_total[5m]) * 60", "legendFormat": "Pedidos/min" },
+        { "expr": "rate(pedidos_valor_reais_total[5m]) * 60", "legendFormat": "Faturamento R$/min" }
       ]
     },
     {
       "id": 5,
-      "title": "Logs dos containers",
-      "type": "logs",
-      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 9},
-      "datasource": {"type": "loki", "uid": "loki"},
+      "title": "Sondas Filial - HTTP, DNS e ICMP",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "{job=\"docker\"}"
-        }
+        { "expr": "probe_success{job=~\"blackbox_http|blackbox_dns|blackbox_icmp\"}", "legendFormat": "{{job}} - {{instance}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "USE - CPU e Memoria (Node Exporter)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU %" },
+        { "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "legendFormat": "RAM %" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "USE - Conexoes Postgres e Nginx",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "pg_stat_activity_count", "legendFormat": "PG conexoes ativas" },
+        { "expr": "nginx_connections_active", "legendFormat": "Nginx conexoes ativas" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Logs Aplicacao e Infraestrutura (Loki)",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{compose_project=~\"cafeplanalto.*\"}\" |~ \"(?i)(error|warn|500|timeout|fail)\"" }
       ]
     }
   ]

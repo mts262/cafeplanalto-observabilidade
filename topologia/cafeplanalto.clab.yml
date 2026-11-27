@@ -258,6 +258,44 @@ topology:
         - ip route add 172.20.0.0/16 via 172.20.20.1
         - sh -c 'echo "nameserver 172.20.10.10" > /etc/resolv.conf'
 
+    node-exporter:
+      kind: linux
+      image: prom/node-exporter:v1.9.1
+      binds:
+        - /:/host:ro
+      cmd: --path.rootfs=/host
+      exec:
+        - ip addr add 172.20.99.24/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    cadvisor:
+      kind: linux
+      image: gcr.io/cadvisor/cadvisor:v0.51.0
+      privileged: true
+      binds:
+        - /:/rootfs:ro
+        - /var/run:/var/run:ro
+        - /sys:/sys:ro
+        - /var/lib/docker/:/var/lib/docker:ro
+        - /dev/disk/:/dev/disk:ro
+      exec:
+        - ip addr add 172.20.99.25/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    postgres-exporter:
+      kind: linux
+      image: prometheuscommunity/postgres-exporter:v0.16.0
+      env:
+        DATA_SOURCE_NAME: "postgresql://loja:loja123@172.20.10.22:5432/loja?sslmode=disable"
+      exec:
+        - ip addr add 172.20.99.26/24 dev eth1
+        - ip route add 172.20.0.0/16 via 172.20.99.1
+
+    nginx-exporter:
+      kind: linux
+      image: nginx/nginx-prometheus-exporter:1.4.2
+      cmd: --nginx.scrape-uri=http://172.20.10.20/stub_status
+
   links:
     - endpoints: ["r-matriz:eth1", "r-filial:eth1"]
     - endpoints: ["r-matriz:eth2", "br-servicos:svc1"]
@@ -278,3 +316,8 @@ topology:
     - endpoints: ["loki:eth1", "br-gestao:loki1"]
     - endpoints: ["alloy:eth1", "br-gestao:alloy1"]
     - endpoints: ["blackbox:eth1", "br-filial:probe1"]
+
+    - endpoints: ["node-exporter:eth1", "br-gestao:nexp1"]
+    - endpoints: ["cadvisor:eth1", "br-gestao:cadv1"]
+    - endpoints: ["postgres-exporter:eth1", "br-gestao:pgexp1"]
+    - endpoints: ["nginx-exporter:eth1", "br-gestao:ngexp1"]

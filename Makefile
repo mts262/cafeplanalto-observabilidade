@@ -10,7 +10,7 @@ build:
 	docker build -t cafeplanalto/roteador:latest imagens/roteador
 
 up: build
-	@mkdir -p dados/prometheus dados/grafana dados/loki && chmod -R a+rwX dados
+	@mkdir -p dados/prometheus dados/grafana dados/loki && sudo chmod 777 dados dados/prometheus dados/grafana dados/loki 2>/dev/null || true
 	@for b in $(BRIDGES); do sudo ip link add $$b type bridge 2>/dev/null || true; sudo ip link set $$b up; done
 	sudo containerlab deploy -t $(TOPO)
 	$(MAKE) ips-extra
@@ -42,7 +42,7 @@ zabbix-status:
 .PHONY: ips-extra
 
 ips-extra:
-	@for par in loki:172.20.99.23 alloy:172.20.99.24; do \
+	@for par in loki:172.20.99.23 alloy:172.20.99.28 nginx-exporter:172.20.99.27; do \
 	  nome=$${par%%:*}; ip=$${par##*:}; \
 	  pid=$$(docker inspect -f '{{.State.Pid}}' clab-cafeplanalto-$$nome); \
 	  sudo nsenter -t $$pid -n ip addr add $$ip/24 dev eth1 2>/dev/null || true; \

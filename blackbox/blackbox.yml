@@ -6,3 +6,18 @@ modules:
       method: GET
       preferred_ip_protocol: ip4
       valid_status_codes: [200]
+
+  dns_loja:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: loja.cafeplanalto.lab
+      query_type: A
+
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4

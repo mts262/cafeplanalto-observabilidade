@@ -32,4 +32,4 @@ loki            IN A 172.20.99.23
 ; LAN Filial (172.20.20.0/24)
 cliente-carga   IN A 172.20.20.20
 sonda           IN A 172.20.20.30
-alloy           IN A 172.20.99.24
+alloy           IN A 172.20.99.28
