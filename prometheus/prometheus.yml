@@ -8,8 +8,7 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets:
-            - 172.20.99.21:9093
+        - targets: ["172.20.99.21:9093"]
 
 scrape_configs:
   - job_name: prometheus
@@ -21,7 +20,23 @@ scrape_configs:
     static_configs:
       - targets: ["172.20.10.21:8000"]
 
-  - job_name: blackbox
+  - job_name: node_exporter
+    static_configs:
+      - targets: ["172.20.99.24:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["172.20.99.25:8080"]
+
+  - job_name: postgres_exporter
+    static_configs:
+      - targets: ["172.20.99.26:9187"]
+
+  - job_name: nginx_exporter
+    static_configs:
+      - targets: ["172.20.99.27:9113"]
+
+  - job_name: blackbox_http
     metrics_path: /probe
     params:
       module: [http_2xx]
@@ -29,6 +44,38 @@ scrape_configs:
       - targets:
           - http://loja.cafeplanalto.lab/health
           - http://loja.cafeplanalto.lab/produtos
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 172.20.20.30:9115
+
+  - job_name: blackbox_dns
+    metrics_path: /probe
+    params:
+      module: [dns_loja]
+    static_configs:
+      - targets:
+          - 172.20.10.10:53
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 172.20.20.30:9115
+
+  - job_name: blackbox_icmp
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets:
+          - 172.20.10.21
+          - 172.20.10.22
+          - 172.20.20.20
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
